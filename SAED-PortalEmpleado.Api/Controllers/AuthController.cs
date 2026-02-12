@@ -64,7 +64,7 @@ public class AuthController : ControllerBase
         var googleSub = claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
         var email = claims.FirstOrDefault(c => c.Type == ClaimTypes.Email)?.Value;
         var name = claims.FirstOrDefault(c => c.Type == ClaimTypes.Name)?.Value;
-        var picture = claims.FirstOrDefault(c => c.Type == "picture")?.Value;
+        var picture = claims.FirstOrDefault(c => c.Type == "picture" || c.Type == "urn:google:picture")?.Value;
 
         if (string.IsNullOrEmpty(googleSub) || string.IsNullOrEmpty(email))
         {
