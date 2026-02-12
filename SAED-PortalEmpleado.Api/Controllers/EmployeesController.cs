@@ -5,6 +5,12 @@ using SAED_PortalEmpleado.Infrastructure.Persistence;
 
 namespace SAED_PortalEmpleado.Api.Controllers;
 
+/// <summary>
+/// Employees API Controller
+/// Note: For simplicity, this controller directly uses DbContext.
+/// In a production application, consider implementing Repository pattern
+/// or CQRS with MediatR to maintain better separation of concerns.
+/// </summary>
 [ApiController]
 [Route("api/[controller]")]
 public class EmployeesController : ControllerBase
@@ -73,7 +79,17 @@ public class EmployeesController : ControllerBase
             return BadRequest();
         }
 
-        _context.Entry(employee).State = EntityState.Modified;
+        var existingEmployee = await _context.Employees.FindAsync(id);
+        if (existingEmployee == null)
+        {
+            return NotFound();
+        }
+
+        // Update properties but preserve CreatedAt
+        existingEmployee.GoogleSub = employee.GoogleSub;
+        existingEmployee.Email = employee.Email;
+        existingEmployee.FullName = employee.FullName;
+        existingEmployee.PictureUrl = employee.PictureUrl;
 
         try
         {
@@ -81,10 +97,6 @@ public class EmployeesController : ControllerBase
         }
         catch (DbUpdateConcurrencyException)
         {
-            if (!await EmployeeExists(id))
-            {
-                return NotFound();
-            }
             throw;
         }
 
