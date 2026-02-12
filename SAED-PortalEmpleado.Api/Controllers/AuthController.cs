@@ -45,7 +45,8 @@ public class AuthController : ControllerBase
     [AllowAnonymous]
     public async Task<IActionResult> GoogleCallback()
     {
-        var authenticateResult = await HttpContext.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+        // Authenticate with Google scheme to get the external authentication result
+        var authenticateResult = await HttpContext.AuthenticateAsync(GoogleDefaults.AuthenticationScheme);
         
         if (!authenticateResult.Succeeded)
         {
@@ -101,6 +102,11 @@ public class AuthController : ControllerBase
         }
 
         await _context.SaveChangesAsync();
+
+        // Sign in with Cookie scheme to establish the session
+        var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+        var principal = new ClaimsPrincipal(identity);
+        await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
 
         return Ok(new
         {

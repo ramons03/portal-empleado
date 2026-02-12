@@ -35,13 +35,7 @@ builder.Services.AddAuthentication(options =>
 });
 
 // Add Authorization
-builder.Services.AddAuthorization(options =>
-{
-    options.AddPolicy("RequireAuthenticatedUser", policy =>
-    {
-        policy.RequireAuthenticatedUser();
-    });
-});
+builder.Services.AddAuthorization();
 
 // Add Swagger/OpenAPI
 builder.Services.AddEndpointsApiExplorer();

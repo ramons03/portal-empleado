@@ -12,7 +12,7 @@ namespace SAED_PortalEmpleado.Api.Controllers;
 /// In a production application, consider implementing Repository pattern
 /// or CQRS with MediatR to maintain better separation of concerns.
 /// </summary>
-[Authorize(Policy = "RequireAuthenticatedUser")]
+[Authorize]
 [ApiController]
 [Route("api/[controller]")]
 public class EmployeesController : ControllerBase
