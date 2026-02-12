@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="SAED-PortalEmpleado.Api/SAED-PortalEmpleado.Api.csproj" />
+  <Project Path="SAED-PortalEmpleado.Application/SAED-PortalEmpleado.Application.csproj" />
+  <Project Path="SAED-PortalEmpleado.Domain/SAED-PortalEmpleado.Domain.csproj" />
+  <Project Path="SAED-PortalEmpleado.Infrastructure/SAED-PortalEmpleado.Infrastructure.csproj" />
+</Solution>
