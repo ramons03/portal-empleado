@@ -50,10 +50,16 @@
 </div>
 
 <script>
-    function copyToken() {
+    async function copyToken() {
         const tokenElement = document.getElementById('jwtToken');
-        tokenElement.select();
-        document.execCommand('copy');
-        alert('Token copied to clipboard!');
+        try {
+            await navigator.clipboard.writeText(tokenElement.value);
+            alert('Token copied to clipboard!');
+        } catch (err) {
+            // Fallback for browsers that don't support clipboard API
+            tokenElement.select();
+            document.execCommand('copy');
+            alert('Token copied to clipboard!');
+        }
     }
 </script>
