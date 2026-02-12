@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SAED_PortalEmpleado.Domain.Entities;
@@ -11,6 +12,7 @@ namespace SAED_PortalEmpleado.Api.Controllers;
 /// In a production application, consider implementing Repository pattern
 /// or CQRS with MediatR to maintain better separation of concerns.
 /// </summary>
+[Authorize(Policy = "RequireAuthenticatedUser")]
 [ApiController]
 [Route("api/[controller]")]
 public class EmployeesController : ControllerBase
