@@ -104,7 +104,20 @@ public class AuthController : ControllerBase
         await _context.SaveChangesAsync();
 
         // Sign in with Cookie scheme to establish the session
-        var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+        // Only include necessary claims to minimize cookie payload
+        var cookieClaims = new List<Claim>
+        {
+            new Claim(ClaimTypes.NameIdentifier, googleSub),
+            new Claim(ClaimTypes.Email, email),
+            new Claim(ClaimTypes.Name, name ?? email)
+        };
+        
+        if (!string.IsNullOrEmpty(picture))
+        {
+            cookieClaims.Add(new Claim("picture", picture));
+        }
+
+        var identity = new ClaimsIdentity(cookieClaims, CookieAuthenticationDefaults.AuthenticationScheme);
         var principal = new ClaimsPrincipal(identity);
         await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
 
