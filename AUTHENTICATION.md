@@ -80,7 +80,7 @@ The authentication implementation includes the following endpoints:
 
 2. **Authorization**:
    - All API endpoints (except auth/login and auth/google-callback) require authentication
-   - Protected endpoints use the `RequireAuthenticatedUser` authorization policy
+   - Protected endpoints use the default `[Authorize]` attribute which requires authenticated users
    - Unauthenticated requests return 401 Unauthorized
 
 3. **Claims Extracted from Google**:
@@ -118,8 +118,9 @@ The authentication implementation includes the following endpoints:
 1. **HTTPS Required**: The application uses `app.UseHttpsRedirection()` to enforce HTTPS
 2. **Secure Cookies**: Cookie authentication is configured with secure defaults
 3. **Token Storage**: Google tokens are saved with `SaveTokens = true` for future API calls
-4. **Authorization Policy**: The `RequireAuthenticatedUser` policy ensures all protected endpoints require authentication
+4. **Authorization**: The default `[Authorize]` attribute ensures all protected endpoints require authentication
 5. **Credential Management**: Never commit credentials to source control - use User Secrets or Environment Variables
+6. **Minimal Claims**: Only necessary claims (sub, email, name, picture) are stored in the session cookie to minimize payload and reduce information exposure
 
 ## Architecture
 
