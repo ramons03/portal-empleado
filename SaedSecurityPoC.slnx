@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Saed.Api/Saed.Api.csproj" />
+  <Project Path="Saed.Auth/Saed.Auth.csproj" />
+</Solution>

@@ -1,0 +1,202 @@
+.App {
+  text-align: center;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #333;
+}
+
+.App-header {
+  background-color: rgba(255, 255, 255, 0.95);
+  padding: 30px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  margin-bottom: 20px;
+}
+
+.App-header h1 {
+  margin: 0;
+  color: #667eea;
+  font-size: 2.5em;
+}
+
+.App-header p {
+  margin: 10px 0 0 0;
+  color: #666;
+}
+
+.App-main {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.section {
+  background: white;
+  border-radius: 8px;
+  padding: 30px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  text-align: left;
+}
+
+.section h2 {
+  color: #667eea;
+  margin-top: 0;
+  border-bottom: 2px solid #667eea;
+  padding-bottom: 10px;
+}
+
+.section h3 {
+  color: #764ba2;
+  margin-top: 0;
+}
+
+.button-group {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 20px 0;
+}
+
+.btn {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 5px;
+  font-size: 16px;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+  transition: all 0.3s ease;
+  font-weight: 600;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-danger {
+  background-color: #dc3545;
+  color: white;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background-color: #c82333;
+}
+
+.btn-primary {
+  background-color: #007bff;
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background-color: #0056b3;
+}
+
+.btn-success {
+  background-color: #28a745;
+  color: white;
+}
+
+.btn-success:hover:not(:disabled) {
+  background-color: #218838;
+}
+
+.btn-secondary {
+  background-color: #6c757d;
+  color: white;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background-color: #5a6268;
+}
+
+.token-form {
+  margin: 20px 0;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: #333;
+}
+
+.token-input {
+  width: 100%;
+  padding: 10px;
+  border: 2px solid #ddd;
+  border-radius: 5px;
+  font-family: monospace;
+  font-size: 14px;
+  resize: vertical;
+}
+
+.token-input:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.info-text {
+  color: #666;
+  font-style: italic;
+  margin-top: 10px;
+}
+
+.error-section {
+  background-color: #f8d7da;
+  border-left: 4px solid #dc3545;
+}
+
+.error-message {
+  color: #721c24;
+  font-weight: 600;
+  padding: 15px;
+  background-color: rgba(220, 53, 69, 0.1);
+  border-radius: 4px;
+}
+
+.success-section {
+  background-color: #d4edda;
+  border-left: 4px solid #28a745;
+}
+
+.response-data {
+  padding: 15px;
+  background-color: rgba(40, 167, 69, 0.1);
+  border-radius: 4px;
+}
+
+.response-data p, .response-data li {
+  margin: 10px 0;
+}
+
+.response-data ul {
+  list-style: none;
+  padding-left: 0;
+}
+
+.info-section {
+  background-color: #d1ecf1;
+  border-left: 4px solid #0c5460;
+}
+
+.info-section ol {
+  padding-left: 20px;
+}
+
+.info-section li {
+  margin: 10px 0;
+  line-height: 1.6;
+}
+
+.note {
+  margin-top: 20px;
+  padding: 15px;
+  background-color: rgba(12, 84, 96, 0.1);
+  border-radius: 4px;
+  color: #0c5460;
+}

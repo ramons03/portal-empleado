@@ -1,0 +1,51 @@
+@{
+    ViewData["Title"] = "Login";
+}
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Login with Google</h2>
+                </div>
+                <div class="card-body">
+                    @if (Context.Request.Query.ContainsKey("error"))
+                    {
+                        <div class="alert alert-danger" role="alert">
+                            @Context.Request.Query["error"]
+                        </div>
+                    }
+                    
+                    <p>Select a domain policy to login:</p>
+                    
+                    <div class="d-grid gap-3 mt-4">
+                        <a href="@Url.Action("GoogleLogin", new { policy = "Strict" })" class="btn btn-danger btn-lg">
+                            <i class="bi bi-google"></i> Login with Strict Policy
+                            <small class="d-block mt-1">Only specific domains allowed</small>
+                        </a>
+                        
+                        <a href="@Url.Action("GoogleLogin", new { policy = "Edu" })" class="btn btn-primary btn-lg">
+                            <i class="bi bi-google"></i> Login with Edu Policy
+                            <small class="d-block mt-1">Only .edu domains allowed</small>
+                        </a>
+                        
+                        <a href="@Url.Action("GoogleLogin", new { policy = "Public" })" class="btn btn-success btn-lg">
+                            <i class="bi bi-google"></i> Login with Public Policy
+                            <small class="d-block mt-1">All domains allowed</small>
+                        </a>
+                    </div>
+                    
+                    <div class="mt-4">
+                        <h5>Policy Descriptions:</h5>
+                        <ul>
+                            <li><strong>Strict:</strong> Only specific domains configured in appsettings.json</li>
+                            <li><strong>Edu:</strong> Only educational institutions (*.edu domains)</li>
+                            <li><strong>Public:</strong> All domains are allowed</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,59 @@
+@{
+    ViewData["Title"] = "Authentication Token";
+}
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-10">
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <h2>Authentication Successful</h2>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-success" role="alert">
+                        <h4 class="alert-heading">Welcome, @ViewBag.Name!</h4>
+                        <p>You have successfully authenticated with the <strong>@ViewBag.Policy</strong> policy.</p>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label"><strong>Email:</strong></label>
+                        <p>@ViewBag.Email</p>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label"><strong>Policy:</strong></label>
+                        <p>@ViewBag.Policy</p>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="jwtToken" class="form-label"><strong>JWT Token:</strong></label>
+                        <textarea id="jwtToken" class="form-control" rows="8" readonly>@ViewBag.Token</textarea>
+                        <small class="form-text text-muted">
+                            This JWT token is issued by saed-auth for saed-api. 
+                            Copy this token to use in the React application.
+                            Note: Google tokens are NOT exposed - only internal JWT.
+                        </small>
+                    </div>
+                    
+                    <div class="d-flex gap-2">
+                        <button onclick="copyToken()" class="btn btn-primary">
+                            <i class="bi bi-clipboard"></i> Copy Token
+                        </button>
+                        <a href="@Url.Action("Logout")" class="btn btn-secondary">
+                            <i class="bi bi-box-arrow-right"></i> Logout
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function copyToken() {
+        const tokenElement = document.getElementById('jwtToken');
+        tokenElement.select();
+        document.execCommand('copy');
+        alert('Token copied to clipboard!');
+    }
+</script>
