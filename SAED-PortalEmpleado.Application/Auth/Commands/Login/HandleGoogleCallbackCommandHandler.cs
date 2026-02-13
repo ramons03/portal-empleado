@@ -9,13 +9,16 @@ namespace SAED_PortalEmpleado.Application.Auth.Commands.Login;
 public class HandleGoogleCallbackCommandHandler : IRequestHandler<HandleGoogleCallbackCommand, HandleGoogleCallbackResponse>
 {
     private readonly IEmployeeRepository _employeeRepository;
+    private readonly IDateTimeProvider _dateTimeProvider;
     private readonly ILogger<HandleGoogleCallbackCommandHandler> _logger;
 
     public HandleGoogleCallbackCommandHandler(
         IEmployeeRepository employeeRepository,
+        IDateTimeProvider dateTimeProvider,
         ILogger<HandleGoogleCallbackCommandHandler> logger)
     {
         _employeeRepository = employeeRepository;
+        _dateTimeProvider = dateTimeProvider;
         _logger = logger;
     }
 
@@ -53,7 +56,7 @@ public class HandleGoogleCallbackCommandHandler : IRequestHandler<HandleGoogleCa
                 Email = email,
                 FullName = name ?? email,
                 PictureUrl = picture,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = _dateTimeProvider.UtcNow
             };
             await _employeeRepository.AddAsync(employee, cancellationToken);
             _logger.LogInformation("Creating new employee: {Email}", email);
