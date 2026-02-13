@@ -7,6 +7,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container
 builder.Services.AddControllers();
+builder.Services.AddRazorPages();
 
 // Add Application and Infrastructure layers
 builder.Services.AddApplication();
@@ -22,6 +23,7 @@ builder.Services.AddAuthentication(options =>
 {
     options.LoginPath = "/api/auth/login";
     options.LogoutPath = "/api/auth/logout";
+    options.AccessDeniedPath = "/";
     options.ExpireTimeSpan = TimeSpan.FromHours(24);
     options.SlidingExpiration = true;
 })
@@ -67,5 +69,6 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapRazorPages();
 
 app.Run();
