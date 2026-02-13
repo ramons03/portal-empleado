@@ -121,17 +121,8 @@ public class AuthController : ControllerBase
         var principal = new ClaimsPrincipal(identity);
         await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
 
-        return Ok(new
-        {
-            message = "Authentication successful",
-            employee = new
-            {
-                employee.Id,
-                employee.Email,
-                employee.FullName,
-                employee.PictureUrl
-            }
-        });
+        // Redirect to home page after successful authentication
+        return Redirect("/");
     }
 
     /// <summary>
