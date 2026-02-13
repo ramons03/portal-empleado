@@ -48,12 +48,19 @@ try
     // Register CurrentUserService
     builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
     
+    // Register DateTimeProvider
+    builder.Services.AddSingleton<IDateTimeProvider, DateTimeProvider>();
+    
     // Add CORS for frontend
+    // NOTE: In production, update the allowed origins to match your production domain
+    var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() 
+        ?? new[] { "http://localhost:5173", "http://localhost:3000" };
+    
     builder.Services.AddCors(options =>
     {
         options.AddPolicy("AllowFrontend", policy =>
         {
-            policy.WithOrigins("http://localhost:5173", "http://localhost:3000") // Vite default port and common React port
+            policy.WithOrigins(allowedOrigins) // Development origins - configure for production
                   .AllowAnyHeader()
                   .AllowAnyMethod()
                   .AllowCredentials(); // Required for cookies
