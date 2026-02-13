@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -57,6 +58,7 @@ public class EmployeesController : ControllerBase
     /// Create a new employee
     /// </summary>
     [HttpPost]
+    [ValidateAntiForgeryToken]
     public async Task<ActionResult<Employee>> CreateEmployee(Employee employee)
     {
         _logger.LogInformation("Creating new employee: {Email}", employee.Email);
@@ -74,6 +76,7 @@ public class EmployeesController : ControllerBase
     /// Update an existing employee
     /// </summary>
     [HttpPut("{id}")]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> UpdateEmployee(Guid id, Employee employee)
     {
         if (id != employee.Id)
@@ -109,6 +112,7 @@ public class EmployeesController : ControllerBase
     /// Delete an employee
     /// </summary>
     [HttpDelete("{id}")]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> DeleteEmployee(Guid id)
     {
         _logger.LogInformation("Deleting employee with Id: {EmployeeId}", id);

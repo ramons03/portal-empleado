@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.Google;
@@ -16,11 +17,24 @@ public class AuthController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
     private readonly ILogger<AuthController> _logger;
+    private readonly IAntiforgery _antiforgery;
 
-    public AuthController(ApplicationDbContext context, ILogger<AuthController> logger)
+    public AuthController(ApplicationDbContext context, ILogger<AuthController> logger, IAntiforgery antiforgery)
     {
         _context = context;
         _logger = logger;
+        _antiforgery = antiforgery;
+    }
+
+    /// <summary>
+    /// Gets CSRF token for protected operations
+    /// </summary>
+    [HttpGet("csrf-token")]
+    [AllowAnonymous]
+    public IActionResult GetCsrfToken()
+    {
+        var tokens = _antiforgery.GetAndStoreTokens(HttpContext);
+        return Ok(new { token = tokens.RequestToken });
     }
 
     /// <summary>
@@ -130,6 +144,7 @@ public class AuthController : ControllerBase
     /// </summary>
     [HttpPost("logout")]
     [Authorize]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> Logout()
     {
         await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
