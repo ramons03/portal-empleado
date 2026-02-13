@@ -356,6 +356,27 @@ export ASPNETCORE_ENVIRONMENT=Production
 
 ---
 
+## Production Configuration Notes
+
+⚠️ **IMPORTANT**: The `appsettings.Production.json` file contains template values only. 
+
+**Never commit real credentials to source control!**
+
+For production deployments:
+- Use **Azure Key Vault** or similar secret management service
+- Use **Environment Variables** for sensitive configuration
+- Use **Managed Identities** for Azure resources
+- Configure secrets through your deployment pipeline
+
+Example using environment variables:
+```bash
+export ConnectionStrings__DefaultConnection="Server=prod-server;Database=..."
+export Authentication__Google__ClientId="real-client-id"
+export Authentication__Google__ClientSecret="real-client-secret"
+```
+
+---
+
 ## Security Checklist
 
 - [x] Global exception handling prevents information leakage
