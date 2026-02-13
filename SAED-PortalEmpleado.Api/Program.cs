@@ -2,7 +2,9 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.RateLimiting;
 using SAED_PortalEmpleado.Api.Middleware;
+using SAED_PortalEmpleado.Api.Services;
 using SAED_PortalEmpleado.Application;
+using SAED_PortalEmpleado.Application.Common.Interfaces;
 using SAED_PortalEmpleado.Infrastructure;
 using Serilog;
 using System.Threading.RateLimiting;
@@ -33,9 +35,37 @@ try
     builder.Services.AddControllers();
     builder.Services.AddRazorPages();
 
+    // Add HttpContextAccessor (required for CurrentUserService)
+    builder.Services.AddHttpContextAccessor();
+
     // Add Application and Infrastructure layers
     builder.Services.AddApplication();
     builder.Services.AddInfrastructure(builder.Configuration);
+    
+    // Add Response Caching
+    builder.Services.AddResponseCaching();
+    
+    // Register CurrentUserService
+    builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
+    
+    // Register DateTimeProvider
+    builder.Services.AddSingleton<IDateTimeProvider, DateTimeProvider>();
+    
+    // Add CORS for frontend
+    // NOTE: In production, update the allowed origins to match your production domain
+    var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() 
+        ?? new[] { "http://localhost:5173", "http://localhost:3000" };
+    
+    builder.Services.AddCors(options =>
+    {
+        options.AddPolicy("AllowFrontend", policy =>
+        {
+            policy.WithOrigins(allowedOrigins) // Development origins - configure for production
+                  .AllowAnyHeader()
+                  .AllowAnyMethod()
+                  .AllowCredentials(); // Required for cookies
+        });
+    });
 
     // Add Antiforgery protection
     builder.Services.AddAntiforgery(options =>
@@ -193,9 +223,15 @@ try
     }
 
     app.UseHttpsRedirection();
+    
+    // Enable CORS
+    app.UseCors("AllowFrontend");
 
     // Enable rate limiting
     app.UseRateLimiter();
+    
+    // Enable response caching
+    app.UseResponseCaching();
 
     app.UseAuthentication();
     app.UseAuthorization();
