@@ -1,13 +1,12 @@
+using MediatR;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using SAED_PortalEmpleado.Domain.Entities;
-using SAED_PortalEmpleado.Infrastructure.Persistence;
-using System.Security.Claims;
+using SAED_PortalEmpleado.Application.Auth.Commands.Login;
+using SAED_PortalEmpleado.Application.Auth.Queries.GetCurrentUser;
 
 namespace SAED_PortalEmpleado.Api.Controllers;
 
@@ -15,13 +14,13 @@ namespace SAED_PortalEmpleado.Api.Controllers;
 [Route("api/[controller]")]
 public class AuthController : ControllerBase
 {
-    private readonly ApplicationDbContext _context;
+    private readonly IMediator _mediator;
     private readonly ILogger<AuthController> _logger;
     private readonly IAntiforgery _antiforgery;
 
-    public AuthController(ApplicationDbContext context, ILogger<AuthController> logger, IAntiforgery antiforgery)
+    public AuthController(IMediator mediator, ILogger<AuthController> logger, IAntiforgery antiforgery)
     {
-        _context = context;
+        _mediator = mediator;
         _logger = logger;
         _antiforgery = antiforgery;
     }
@@ -68,72 +67,24 @@ public class AuthController : ControllerBase
             return Unauthorized("Authentication failed");
         }
 
-        var claims = authenticateResult.Principal?.Claims;
-        if (claims == null)
+        if (authenticateResult.Principal == null)
         {
-            _logger.LogWarning("No claims found in authentication result");
-            return Unauthorized("No claims found");
+            _logger.LogWarning("No principal found in authentication result");
+            return Unauthorized("No principal found");
         }
 
-        // Extract claims from Google
-        var googleSub = claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
-        var email = claims.FirstOrDefault(c => c.Type == ClaimTypes.Email)?.Value;
-        var name = claims.FirstOrDefault(c => c.Type == ClaimTypes.Name)?.Value;
-        var picture = claims.FirstOrDefault(c => c.Type == "picture" || c.Type == "urn:google:picture")?.Value;
+        // Use MediatR to handle the authentication logic
+        var command = new HandleGoogleCallbackCommand(authenticateResult.Principal);
+        var result = await _mediator.Send(command);
 
-        if (string.IsNullOrEmpty(googleSub) || string.IsNullOrEmpty(email))
+        if (!result.Success || result.Principal == null)
         {
-            _logger.LogWarning("Required claims (sub or email) are missing");
-            return BadRequest("Required claims are missing");
+            _logger.LogWarning("Failed to process Google authentication: {Error}", result.ErrorMessage);
+            return BadRequest(result.ErrorMessage ?? "Authentication processing failed");
         }
-
-        // Persist or update employee in database
-        var employee = await _context.Employees
-            .FirstOrDefaultAsync(e => e.GoogleSub == googleSub);
-
-        if (employee == null)
-        {
-            // Create new employee
-            employee = new Employee
-            {
-                Id = Guid.NewGuid(),
-                GoogleSub = googleSub,
-                Email = email,
-                FullName = name ?? email,
-                PictureUrl = picture,
-                CreatedAt = DateTime.UtcNow
-            };
-            _context.Employees.Add(employee);
-            _logger.LogInformation("Creating new employee: {Email}", email);
-        }
-        else
-        {
-            // Update existing employee
-            employee.Email = email;
-            employee.FullName = name ?? email;
-            employee.PictureUrl = picture;
-            _logger.LogInformation("Updating existing employee: {Email}", email);
-        }
-
-        await _context.SaveChangesAsync();
 
         // Sign in with Cookie scheme to establish the session
-        // Only include necessary claims to minimize cookie payload
-        var cookieClaims = new List<Claim>
-        {
-            new Claim(ClaimTypes.NameIdentifier, googleSub),
-            new Claim(ClaimTypes.Email, email),
-            new Claim(ClaimTypes.Name, name ?? email)
-        };
-        
-        if (!string.IsNullOrEmpty(picture))
-        {
-            cookieClaims.Add(new Claim("picture", picture));
-        }
-
-        var identity = new ClaimsIdentity(cookieClaims, CookieAuthenticationDefaults.AuthenticationScheme);
-        var principal = new ClaimsPrincipal(identity);
-        await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
+        await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, result.Principal);
 
         // Redirect to home page after successful authentication
         return Redirect("/");
@@ -156,30 +107,22 @@ public class AuthController : ControllerBase
     /// </summary>
     [HttpGet("me")]
     [Authorize]
+    [ResponseCache(Duration = 300, VaryByHeader = "Cookie")] // Cache for 5 minutes per user
     public async Task<IActionResult> GetCurrentUser()
     {
-        var googleSub = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        
-        if (string.IsNullOrEmpty(googleSub))
+        try
+        {
+            var query = new GetCurrentUserQuery();
+            var result = await _mediator.Send(query);
+            return Ok(result);
+        }
+        catch (UnauthorizedAccessException)
         {
             return Unauthorized();
         }
-
-        var employee = await _context.Employees
-            .FirstOrDefaultAsync(e => e.GoogleSub == googleSub);
-
-        if (employee == null)
+        catch (KeyNotFoundException)
         {
             return NotFound("Employee not found");
         }
-
-        return Ok(new
-        {
-            employee.Id,
-            employee.Email,
-            employee.FullName,
-            employee.PictureUrl,
-            employee.CreatedAt
-        });
     }
 }
