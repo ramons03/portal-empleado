@@ -69,3 +69,9 @@ Desktop.ini
 *.tmp
 *.temp
 *~
+
+# Frontend
+frontend/portal-empleado/node_modules/
+frontend/portal-empleado/dist/
+frontend/portal-empleado/.env
+frontend/portal-empleado/.env.local
