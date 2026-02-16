@@ -5,6 +5,7 @@ import { logger } from '../services/logger';
 import type { User } from '../types';
 import './Home.css';
 import type { FeatureFlags } from '../config/features';
+import { updateCuil } from '../services/profile';
 
 type HomeProps = {
   features: FeatureFlags;
@@ -14,6 +15,9 @@ export default function Home({ features }: HomeProps) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [cuilInput, setCuilInput] = useState('');
+  const [cuilSaving, setCuilSaving] = useState(false);
+  const [cuilError, setCuilError] = useState<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -45,6 +49,22 @@ export default function Home({ features }: HomeProps) {
       logger.captureError(err, 'Home.handleLogout');
       // Even if logout fails, redirect to login
       navigate('/login');
+    }
+  };
+
+  const handleSaveCuil = async () => {
+    if (!cuilInput.trim()) return;
+    try {
+      setCuilSaving(true);
+      setCuilError(null);
+      const saved = await updateCuil(cuilInput.trim());
+      setUser((prev) => (prev ? { ...prev, cuil: saved } : prev));
+      setCuilInput('');
+    } catch (err) {
+      logger.captureError(err, 'Home.handleSaveCuil');
+      setCuilError(err instanceof Error ? err.message : 'No se pudo guardar el CUIL.');
+    } finally {
+      setCuilSaving(false);
     }
   };
 
@@ -94,6 +114,28 @@ export default function Home({ features }: HomeProps) {
             <div>
               <h2>Bienvenido, {user?.fullName}</h2>
               <p className="user-email">{user?.email}</p>
+              <div className="cuil-row">
+                <span className="cuil-label">CUIL:</span>
+                <span className="cuil-value">{user?.cuil ?? 'No configurado'}</span>
+              </div>
+              <div className="cuil-form">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="Ingresá tu CUIL (11 dígitos)"
+                  value={cuilInput}
+                  onChange={(e) => setCuilInput(e.target.value)}
+                  className="cuil-input"
+                />
+                <button
+                  className="cuil-button"
+                  onClick={handleSaveCuil}
+                  disabled={cuilSaving || !cuilInput.trim()}
+                >
+                  {cuilSaving ? 'Guardando...' : 'Guardar'}
+                </button>
+              </div>
+              {cuilError && <p className="cuil-error">{cuilError}</p>}
             </div>
           </div>
 

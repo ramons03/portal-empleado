@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SAED_PortalEmpleado.Api.Services;
 using SAED_PortalEmpleado.Application.Auth.Commands.Login;
 using SAED_PortalEmpleado.Application.Auth.Queries.GetCurrentUser;
 
@@ -18,17 +19,20 @@ public class AuthController : ControllerBase
     private readonly ILogger<AuthController> _logger;
     private readonly IAntiforgery _antiforgery;
     private readonly IConfiguration _configuration;
+    private readonly IGoogleDirectoryCuilService _directoryCuilService;
 
     public AuthController(
         IMediator mediator,
         ILogger<AuthController> logger,
         IAntiforgery antiforgery,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        IGoogleDirectoryCuilService directoryCuilService)
     {
         _mediator = mediator;
         _logger = logger;
         _antiforgery = antiforgery;
         _configuration = configuration;
+        _directoryCuilService = directoryCuilService;
     }
 
     /// <summary>
@@ -87,7 +91,8 @@ public class AuthController : ControllerBase
         }
 
         // Use MediatR to handle the authentication logic
-        var command = new HandleGoogleCallbackCommand(authenticateResult.Principal);
+        var cuilFromDirectory = await _directoryCuilService.GetCuilByEmailAsync(email);
+        var command = new HandleGoogleCallbackCommand(authenticateResult.Principal, cuilFromDirectory);
         var result = await _mediator.Send(command);
 
         if (!result.Success || result.Principal == null)

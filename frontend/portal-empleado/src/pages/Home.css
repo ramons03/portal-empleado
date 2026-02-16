@@ -99,6 +99,58 @@
   margin: 0.5rem 0 0 0;
 }
 
+.cuil-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.5rem;
+  color: #444;
+}
+
+.cuil-label {
+  font-weight: 600;
+}
+
+.cuil-value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.cuil-form {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.cuil-input {
+  flex: 1;
+  min-width: 220px;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 0.5rem;
+  font-size: 0.95rem;
+}
+
+.cuil-button {
+  background: #667eea;
+  color: white;
+  border: none;
+  padding: 0.6rem 1rem;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+
+.cuil-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.cuil-error {
+  color: #d32f2f;
+  margin-top: 0.5rem;
+}
+
 .quick-actions h3 {
   margin-bottom: 1rem;
   color: #333;

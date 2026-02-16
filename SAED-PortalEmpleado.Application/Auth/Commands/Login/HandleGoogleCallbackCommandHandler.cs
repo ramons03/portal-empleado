@@ -37,6 +37,10 @@ public class HandleGoogleCallbackCommandHandler : IRequestHandler<HandleGoogleCa
         var name = claims.FirstOrDefault(c => c.Type == ClaimTypes.Name)?.Value;
         var picture = claims.FirstOrDefault(c => c.Type == "picture" || c.Type == "urn:google:picture")?.Value;
         var cuil = claims.FirstOrDefault(c => c.Type == "cuil" || c.Type == "urn:saed:cuil")?.Value;
+        if (string.IsNullOrWhiteSpace(cuil))
+        {
+            cuil = request.CuilFromDirectory;
+        }
 
         if (string.IsNullOrEmpty(googleSub) || string.IsNullOrEmpty(email))
         {

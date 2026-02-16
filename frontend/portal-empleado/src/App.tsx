@@ -18,7 +18,7 @@ function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/" element={<Home features={features} />} />
-        <Route path="/recibos" element={<Recibos />} />
+        <Route path="/recibos" element={<Recibos features={features} />} />
         {features.vacaciones
           ? <Route path="/vacaciones" element={<Vacaciones />} />
           : <Route path="/vacaciones" element={<Navigate to="/" replace />} />}

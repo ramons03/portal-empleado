@@ -42,6 +42,10 @@ try
     // Add Application and Infrastructure layers
     builder.Services.AddApplication();
     builder.Services.AddInfrastructure(builder.Configuration);
+
+    // Directory API settings (Google Workspace)
+    builder.Services.Configure<DirectorySettings>(builder.Configuration.GetSection("Directory"));
+    builder.Services.AddSingleton<IGoogleDirectoryCuilService, GoogleDirectoryCuilService>();
     
     // Add Response Caching
     builder.Services.AddResponseCaching();
