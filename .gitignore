@@ -70,6 +70,10 @@ Desktop.ini
 *.temp
 *~
 
+# Secrets / local config
+**/appsettings.Development.json
+**/appsettings.*.local.json
+
 # Frontend
 frontend/portal-empleado/node_modules/
 frontend/portal-empleado/dist/

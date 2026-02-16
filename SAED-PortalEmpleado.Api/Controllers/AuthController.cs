@@ -17,12 +17,18 @@ public class AuthController : ControllerBase
     private readonly IMediator _mediator;
     private readonly ILogger<AuthController> _logger;
     private readonly IAntiforgery _antiforgery;
+    private readonly IConfiguration _configuration;
 
-    public AuthController(IMediator mediator, ILogger<AuthController> logger, IAntiforgery antiforgery)
+    public AuthController(
+        IMediator mediator,
+        ILogger<AuthController> logger,
+        IAntiforgery antiforgery,
+        IConfiguration configuration)
     {
         _mediator = mediator;
         _logger = logger;
         _antiforgery = antiforgery;
+        _configuration = configuration;
     }
 
     /// <summary>
@@ -73,6 +79,13 @@ public class AuthController : ControllerBase
             return Unauthorized("No principal found");
         }
 
+        var email = authenticateResult.Principal.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value;
+        if (!IsEmailAllowed(email))
+        {
+            _logger.LogWarning("Login blocked for email: {Email}", email ?? "(null)");
+            return Forbid();
+        }
+
         // Use MediatR to handle the authentication logic
         var command = new HandleGoogleCallbackCommand(authenticateResult.Principal);
         var result = await _mediator.Send(command);
@@ -86,8 +99,47 @@ public class AuthController : ControllerBase
         // Sign in with Cookie scheme to establish the session
         await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, result.Principal);
 
-        // Redirect to home page after successful authentication
+        // Redirect to provided return URL after successful authentication
+        string? returnUrl = null;
+        if (authenticateResult.Properties?.Items != null &&
+            authenticateResult.Properties.Items.TryGetValue("returnUrl", out var returnUrlValue))
+        {
+            returnUrl = returnUrlValue;
+        }
+        if (!string.IsNullOrWhiteSpace(returnUrl) &&
+            (returnUrl.StartsWith("/") || returnUrl.StartsWith("http://localhost:5173", StringComparison.OrdinalIgnoreCase)))
+        {
+            return Redirect(returnUrl);
+        }
+
         return Redirect("/");
+    }
+
+    private bool IsEmailAllowed(string? email)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return false;
+        }
+
+        var allowedDomains = _configuration
+            .GetSection("Authentication:AllowedEmailDomains")
+            .Get<string[]>();
+
+        if (allowedDomains == null || allowedDomains.Length == 0)
+        {
+            return true;
+        }
+
+        var atIndex = email.LastIndexOf('@');
+        if (atIndex <= 0 || atIndex == email.Length - 1)
+        {
+            return false;
+        }
+
+        var domain = email[(atIndex + 1)..];
+        return allowedDomains.Any(d =>
+            string.Equals(d, domain, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>

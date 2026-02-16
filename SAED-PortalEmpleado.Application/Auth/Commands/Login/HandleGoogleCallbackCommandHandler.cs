@@ -36,6 +36,7 @@ public class HandleGoogleCallbackCommandHandler : IRequestHandler<HandleGoogleCa
         var email = claims.FirstOrDefault(c => c.Type == ClaimTypes.Email)?.Value;
         var name = claims.FirstOrDefault(c => c.Type == ClaimTypes.Name)?.Value;
         var picture = claims.FirstOrDefault(c => c.Type == "picture" || c.Type == "urn:google:picture")?.Value;
+        var cuil = claims.FirstOrDefault(c => c.Type == "cuil" || c.Type == "urn:saed:cuil")?.Value;
 
         if (string.IsNullOrEmpty(googleSub) || string.IsNullOrEmpty(email))
         {
@@ -55,6 +56,7 @@ public class HandleGoogleCallbackCommandHandler : IRequestHandler<HandleGoogleCa
                 GoogleSub = googleSub,
                 Email = email,
                 FullName = name ?? email,
+                Cuil = string.IsNullOrWhiteSpace(cuil) ? null : cuil,
                 PictureUrl = picture,
                 CreatedAt = _dateTimeProvider.UtcNow
             };
@@ -66,6 +68,10 @@ public class HandleGoogleCallbackCommandHandler : IRequestHandler<HandleGoogleCa
             // Update existing employee
             employee.Email = email;
             employee.FullName = name ?? email;
+            if (!string.IsNullOrWhiteSpace(cuil))
+            {
+                employee.Cuil = cuil;
+            }
             employee.PictureUrl = picture;
             await _employeeRepository.UpdateAsync(employee, cancellationToken);
             _logger.LogInformation("Updating existing employee: {Email}", email);
@@ -82,6 +88,10 @@ public class HandleGoogleCallbackCommandHandler : IRequestHandler<HandleGoogleCa
         if (!string.IsNullOrEmpty(picture))
         {
             cookieClaims.Add(new Claim("picture", picture));
+        }
+        if (!string.IsNullOrWhiteSpace(cuil))
+        {
+            cookieClaims.Add(new Claim("cuil", cuil));
         }
 
         var identity = new ClaimsIdentity(cookieClaims, "Cookies");

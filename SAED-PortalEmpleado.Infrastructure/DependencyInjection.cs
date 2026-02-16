@@ -16,8 +16,18 @@ public static class DependencyInjection
         var connectionString = configuration.GetConnectionString("DefaultConnection")
             ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
 
+        var databaseProvider = configuration["DatabaseProvider"] ?? "SqlServer";
+
         services.AddDbContext<ApplicationDbContext>(options =>
-            options.UseSqlServer(connectionString));
+        {
+            if (string.Equals(databaseProvider, "Sqlite", StringComparison.OrdinalIgnoreCase))
+            {
+                options.UseSqlite(connectionString);
+                return;
+            }
+
+            options.UseSqlServer(connectionString);
+        });
 
         // Register repositories
         services.AddScoped<IEmployeeRepository, EmployeeRepository>();

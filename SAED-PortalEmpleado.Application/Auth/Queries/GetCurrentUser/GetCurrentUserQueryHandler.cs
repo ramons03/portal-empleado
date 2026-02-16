@@ -25,6 +25,7 @@ public class GetCurrentUserQueryHandler : IRequestHandler<GetCurrentUserQuery, G
             employee.Id,
             employee.Email,
             employee.FullName,
+            employee.Cuil,
             employee.PictureUrl,
             employee.CreatedAt
         );

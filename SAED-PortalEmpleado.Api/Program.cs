@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.RateLimiting;
+using SAED_PortalEmpleado.Api.Endpoints;
 using SAED_PortalEmpleado.Api.Middleware;
 using SAED_PortalEmpleado.Api.Services;
 using SAED_PortalEmpleado.Application;
@@ -106,6 +107,32 @@ try
         options.Cookie.SameSite = cookieSameSite;
         options.Cookie.Name = ".SAED.PortalEmpleado.Auth";
         options.Cookie.MaxAge = TimeSpan.FromSeconds(cookieMaxAge);
+        
+        // Return 401 for API requests instead of redirecting to Google OAuth.
+        // The frontend handles 401 by redirecting to the login page.
+        options.Events = new CookieAuthenticationEvents
+        {
+            OnRedirectToLogin = context =>
+            {
+                if (context.Request.Path.StartsWithSegments("/api"))
+                {
+                    context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                    return Task.CompletedTask;
+                }
+                context.Response.Redirect(context.RedirectUri);
+                return Task.CompletedTask;
+            },
+            OnRedirectToAccessDenied = context =>
+            {
+                if (context.Request.Path.StartsWithSegments("/api"))
+                {
+                    context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                    return Task.CompletedTask;
+                }
+                context.Response.Redirect(context.RedirectUri);
+                return Task.CompletedTask;
+            }
+        };
     })
     .AddGoogle(options =>
     {
@@ -238,6 +265,9 @@ try
 
     app.MapControllers();
     app.MapRazorPages();
+
+    // Frontend logging endpoint (React → Serilog → Loki)
+    app.MapFrontendLoggingEndpoints();
 
     Log.Information("SAED Portal Empleado API started successfully");
     

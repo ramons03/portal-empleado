@@ -94,6 +94,7 @@ public class EmployeesController : ControllerBase
         existingEmployee.GoogleSub = employee.GoogleSub;
         existingEmployee.Email = employee.Email;
         existingEmployee.FullName = employee.FullName;
+        existingEmployee.Cuil = employee.Cuil;
         existingEmployee.PictureUrl = employee.PictureUrl;
 
         try

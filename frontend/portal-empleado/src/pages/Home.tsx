@@ -1,10 +1,16 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getCurrentUser, logout } from '../services/auth';
+import { logger } from '../services/logger';
 import type { User } from '../types';
 import './Home.css';
+import type { FeatureFlags } from '../config/features';
 
-export default function Home() {
+type HomeProps = {
+  features: FeatureFlags;
+};
+
+export default function Home({ features }: HomeProps) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -21,8 +27,8 @@ export default function Home() {
         }
         setUser(userData);
       } catch (err) {
-        setError('Error al cargar la información del usuario');
-        console.error(err);
+        logger.captureError(err, 'Home.fetchUser');
+        navigate('/login');
       } finally {
         setLoading(false);
       }
@@ -36,7 +42,7 @@ export default function Home() {
       await logout();
       navigate('/login');
     } catch (err) {
-      console.error('Error al cerrar sesión:', err);
+      logger.captureError(err, 'Home.handleLogout');
       // Even if logout fails, redirect to login
       navigate('/login');
     }
@@ -67,9 +73,11 @@ export default function Home() {
             <button onClick={() => navigate('/recibos')} className="nav-link">
               Recibos
             </button>
-            <button onClick={() => navigate('/vacaciones')} className="nav-link">
-              Vacaciones
-            </button>
+            {features.vacaciones && (
+              <button onClick={() => navigate('/vacaciones')} className="nav-link">
+                Vacaciones
+              </button>
+            )}
             <button onClick={handleLogout} className="logout-button">
               Cerrar Sesión
             </button>
@@ -96,10 +104,12 @@ export default function Home() {
                 <h4>📄 Recibos de Nómina</h4>
                 <p>Ver tus recibos de pago</p>
               </div>
-              <div className="action-card" onClick={() => navigate('/vacaciones')}>
-                <h4>🏖️ Vacaciones</h4>
-                <p>Solicitar días de vacaciones</p>
-              </div>
+              {features.vacaciones && (
+                <div className="action-card" onClick={() => navigate('/vacaciones')}>
+                  <h4>🏖️ Vacaciones</h4>
+                  <p>Solicitar días de vacaciones</p>
+                </div>
+              )}
             </div>
           </div>
         </div>

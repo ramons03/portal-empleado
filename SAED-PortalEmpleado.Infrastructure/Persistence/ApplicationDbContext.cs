@@ -22,11 +22,13 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.GoogleSub).IsRequired().HasMaxLength(255);
             entity.Property(e => e.Email).IsRequired().HasMaxLength(255);
             entity.Property(e => e.FullName).IsRequired().HasMaxLength(255);
+            entity.Property(e => e.Cuil).HasMaxLength(32);
             entity.Property(e => e.PictureUrl).HasMaxLength(500);
             entity.Property(e => e.CreatedAt).IsRequired();
             
             entity.HasIndex(e => e.GoogleSub).IsUnique();
             entity.HasIndex(e => e.Email).IsUnique();
+            entity.HasIndex(e => e.Cuil).IsUnique();
         });
     }
 }

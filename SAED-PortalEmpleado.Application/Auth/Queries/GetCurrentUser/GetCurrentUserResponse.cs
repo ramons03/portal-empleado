@@ -4,6 +4,7 @@ public record GetCurrentUserResponse(
     Guid Id,
     string Email,
     string FullName,
+    string? Cuil,
     string? PictureUrl,
     DateTime CreatedAt
 );

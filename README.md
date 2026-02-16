@@ -135,6 +135,18 @@ The frontend will be available at:
 
 ### Backend Configuration
 
+#### Database Provider (Dev vs Prod)
+
+Development uses SQLite by default (see `SAED-PortalEmpleado.Api/appsettings.Development.json`):
+
+- `DatabaseProvider`: `Sqlite`
+- `ConnectionStrings:DefaultConnection`: `Data Source=App_Data/portal-empleado-dev.db`
+
+Production uses SQL Server by default (see `SAED-PortalEmpleado.Api/appsettings.json`):
+
+- `DatabaseProvider`: `SqlServer`
+- `ConnectionStrings:DefaultConnection`: SQL Server connection string
+
 #### Connection Strings
 
 Update the connection string in `appsettings.json` or `appsettings.Development.json`:
