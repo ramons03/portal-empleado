@@ -73,6 +73,8 @@ Desktop.ini
 # Secrets / local config
 **/appsettings.Development.json
 **/appsettings.*.local.json
+secrets/
+**/secrets/*.json
 
 # Frontend
 frontend/portal-empleado/node_modules/
