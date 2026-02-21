@@ -5,9 +5,11 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Hosting;
 using SAED_PortalEmpleado.Api.Services;
 using SAED_PortalEmpleado.Application.Auth.Commands.Login;
 using SAED_PortalEmpleado.Application.Auth.Queries.GetCurrentUser;
+using System.Security.Claims;
 
 namespace SAED_PortalEmpleado.Api.Controllers;
 
@@ -20,19 +22,22 @@ public class AuthController : ControllerBase
     private readonly IAntiforgery _antiforgery;
     private readonly IConfiguration _configuration;
     private readonly IGoogleDirectoryCuilService _directoryCuilService;
+    private readonly IHostEnvironment _environment;
 
     public AuthController(
         IMediator mediator,
         ILogger<AuthController> logger,
         IAntiforgery antiforgery,
         IConfiguration configuration,
-        IGoogleDirectoryCuilService directoryCuilService)
+        IGoogleDirectoryCuilService directoryCuilService,
+        IHostEnvironment environment)
     {
         _mediator = mediator;
         _logger = logger;
         _antiforgery = antiforgery;
         _configuration = configuration;
         _directoryCuilService = directoryCuilService;
+        _environment = environment;
     }
 
     /// <summary>
@@ -59,6 +64,56 @@ public class AuthController : ControllerBase
             Items = { { "returnUrl", returnUrl } }
         };
         return Challenge(properties, GoogleDefaults.AuthenticationScheme);
+    }
+
+    /// <summary>
+    /// Development-only login (bypass Google)
+    /// </summary>
+    [HttpGet("dev-login")]
+    [AllowAnonymous]
+    public async Task<IActionResult> DevLogin(string returnUrl = "/")
+    {
+        if (!IsDevLoginEnabled())
+        {
+            return NotFound();
+        }
+
+        var devEmail = _configuration["Authentication:DevLogin:Email"] ?? "dev@saed.ar";
+        var devName = _configuration["Authentication:DevLogin:FullName"] ?? "Usuario Dev";
+        var devSub = _configuration["Authentication:DevLogin:GoogleSub"] ?? $"dev-{devEmail}";
+        var devPicture = _configuration["Authentication:DevLogin:PictureUrl"];
+        var devCuil = _configuration["Authentication:DevLogin:Cuil"];
+
+        var claims = new List<Claim>
+        {
+            new Claim(ClaimTypes.NameIdentifier, devSub),
+            new Claim(ClaimTypes.Email, devEmail),
+            new Claim(ClaimTypes.Name, devName)
+        };
+
+        if (!string.IsNullOrWhiteSpace(devPicture))
+        {
+            claims.Add(new Claim("picture", devPicture));
+        }
+
+        if (!string.IsNullOrWhiteSpace(devCuil))
+        {
+            claims.Add(new Claim("cuil", devCuil));
+        }
+
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "Dev"));
+        var command = new HandleGoogleCallbackCommand(principal, devCuil);
+        var result = await _mediator.Send(command);
+
+        if (!result.Success || result.Principal == null)
+        {
+            _logger.LogWarning("Dev login failed: {Error}", result.ErrorMessage);
+            return BadRequest(result.ErrorMessage ?? "Dev login failed");
+        }
+
+        await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, result.Principal);
+
+        return Redirect(GetSafeReturnUrl(returnUrl));
     }
 
     /// <summary>
@@ -111,13 +166,8 @@ public class AuthController : ControllerBase
         {
             returnUrl = returnUrlValue;
         }
-        if (!string.IsNullOrWhiteSpace(returnUrl) &&
-            (returnUrl.StartsWith("/") || returnUrl.StartsWith("http://localhost:5173", StringComparison.OrdinalIgnoreCase)))
-        {
-            return Redirect(returnUrl);
-        }
 
-        return Redirect("/");
+        return Redirect(GetSafeReturnUrl(returnUrl));
     }
 
     private bool IsEmailAllowed(string? email)
@@ -145,6 +195,28 @@ public class AuthController : ControllerBase
         var domain = email[(atIndex + 1)..];
         return allowedDomains.Any(d =>
             string.Equals(d, domain, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private bool IsDevLoginEnabled()
+    {
+        if (!_environment.IsDevelopment())
+        {
+            return false;
+        }
+
+        return _configuration.GetValue<bool>("Authentication:DevLogin:Enabled");
+    }
+
+    private static string GetSafeReturnUrl(string? returnUrl)
+    {
+        if (!string.IsNullOrWhiteSpace(returnUrl) &&
+            (returnUrl.StartsWith("/") ||
+             returnUrl.StartsWith("http://localhost:5173", StringComparison.OrdinalIgnoreCase)))
+        {
+            return returnUrl;
+        }
+
+        return "/";
     }
 
     /// <summary>

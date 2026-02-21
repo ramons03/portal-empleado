@@ -2,11 +2,19 @@ import type { User } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api';
 let hasLoggedApiBaseUrl = false;
+const AUTH_MODE = (import.meta.env.VITE_AUTH_MODE ?? '').toString().toLowerCase();
+const rawDevAuth = (import.meta.env.VITE_DEV_AUTH ?? '').toString();
+const isDevAuthEnabled = parseBooleanFlag(rawDevAuth) || AUTH_MODE === 'dev';
 
 function logApiBaseUrlOnce(): void {
   if (hasLoggedApiBaseUrl || !import.meta.env.DEV) return;
   hasLoggedApiBaseUrl = true;
   console.info('[auth] API_BASE_URL =', API_BASE_URL);
+}
+
+function parseBooleanFlag(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on';
 }
 
 /**
@@ -79,5 +87,16 @@ export async function logout(): Promise<void> {
 export function getLoginUrl(): string {
   logApiBaseUrlOnce();
   const returnUrl = encodeURIComponent(`${window.location.origin}/`);
+  if (isDevAuthEnabled) {
+    return `${API_BASE_URL}/auth/dev-login?returnUrl=${returnUrl}`;
+  }
   return `${API_BASE_URL}/auth/login?returnUrl=${returnUrl}`;
+}
+
+export function getAuthModeLabel(): string {
+  return isDevAuthEnabled ? 'Login de desarrollo' : 'Login with Google';
+}
+
+export function isDevAuth(): boolean {
+  return isDevAuthEnabled;
 }

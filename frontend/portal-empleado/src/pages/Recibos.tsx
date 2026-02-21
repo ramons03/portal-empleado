@@ -50,6 +50,9 @@ export default function Recibos({ features }: RecibosProps) {
             <button onClick={() => navigate('/')} className="nav-link">
               Inicio
             </button>
+            <button onClick={() => navigate('/gestion')} className="nav-link">
+              Gestion
+            </button>
             {features.vacaciones && (
               <button onClick={() => navigate('/vacaciones')} className="nav-link">
                 Vacaciones

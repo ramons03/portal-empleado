@@ -4,6 +4,7 @@ import Login from './pages/Login';
 import Home from './pages/Home';
 import Recibos from './pages/Recibos';
 import Vacaciones from './pages/Vacaciones';
+import Gestion from './pages/Gestion';
 import { getDefaultFeatures, loadFeatures, type FeatureFlags } from './config/features';
 
 function App() {
@@ -19,6 +20,7 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/" element={<Home features={features} />} />
         <Route path="/recibos" element={<Recibos features={features} />} />
+        <Route path="/gestion" element={<Gestion features={features} />} />
         {features.vacaciones
           ? <Route path="/vacaciones" element={<Vacaciones />} />
           : <Route path="/vacaciones" element={<Navigate to="/" replace />} />}

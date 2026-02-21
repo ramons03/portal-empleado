@@ -93,6 +93,9 @@ export default function Home({ features }: HomeProps) {
             <button onClick={() => navigate('/recibos')} className="nav-link">
               Recibos
             </button>
+            <button onClick={() => navigate('/gestion')} className="nav-link">
+              Gestion
+            </button>
             {features.vacaciones && (
               <button onClick={() => navigate('/vacaciones')} className="nav-link">
                 Vacaciones
@@ -145,6 +148,10 @@ export default function Home({ features }: HomeProps) {
               <div className="action-card" onClick={() => navigate('/recibos')}>
                 <h4>📄 Recibos de Nómina</h4>
                 <p>Ver tus recibos de pago</p>
+              </div>
+              <div className="action-card" onClick={() => navigate('/gestion')}>
+                <h4>🧭 Gestion y RRHH</h4>
+                <p>Dependencias, notificaciones y autogestion</p>
               </div>
               {features.vacaciones && (
                 <div className="action-card" onClick={() => navigate('/vacaciones')}>

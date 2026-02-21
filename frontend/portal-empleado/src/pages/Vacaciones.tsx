@@ -13,6 +13,9 @@ export default function Vacaciones() {
             <button onClick={() => navigate('/')} className="nav-link">
               Inicio
             </button>
+            <button onClick={() => navigate('/gestion')} className="nav-link">
+              Gestion
+            </button>
             <button onClick={() => navigate('/recibos')} className="nav-link">
               Recibos
             </button>

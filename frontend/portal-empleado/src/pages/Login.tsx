@@ -1,4 +1,4 @@
-import { getLoginUrl } from '../services/auth';
+import { getAuthModeLabel, getLoginUrl, isDevAuth } from '../services/auth';
 import './Login.css';
 
 export default function Login() {
@@ -13,12 +13,14 @@ export default function Login() {
         <h1>Portal Empleado</h1>
         <p>Por favor, inicia sesión para continuar</p>
         <button onClick={handleLogin} className="login-button">
-          <img 
-            src="https://www.google.com/favicon.ico" 
-            alt="Google logo" 
-            className="google-logo"
-          />
-          Login with Google
+          {!isDevAuth() && (
+            <img
+              src="https://www.google.com/favicon.ico"
+              alt="Google logo"
+              className="google-logo"
+            />
+          )}
+          {getAuthModeLabel()}
         </button>
       </div>
     </div>

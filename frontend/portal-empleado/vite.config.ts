@@ -10,12 +10,12 @@ export default defineConfig({
     },
     proxy: {
       '/api': {
-        target: 'http://localhost:5011',
+        target: 'https://localhost:7079',
         changeOrigin: false,
         secure: false,
       },
       '/signin-google': {
-        target: 'http://localhost:5011',
+        target: 'https://localhost:7079',
         changeOrigin: false,
         secure: false,
       },
