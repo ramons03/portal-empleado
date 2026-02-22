@@ -1,0 +1,36 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: SAED-PortalEmpleado.Api/Dockerfile.dev
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      DOTNET_USE_POLLING_FILE_WATCHER: "1"
+      DOTNET_WATCH_SUPPRESS_LAUNCH_BROWSER: "1"
+      Authentication__DevLogin__Enabled: "true"
+    volumes:
+      - ./:/workspace
+      - api-data:/workspace/SAED-PortalEmpleado.Api/App_Data
+    ports:
+      - "5011:5011"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/portal-empleado/Dockerfile.dev
+    environment:
+      VITE_AUTH_MODE: dev
+      VITE_API_PROXY_TARGET: http://api:5011
+      VITE_SIGNIN_PROXY_TARGET: http://api:5011
+      CHOKIDAR_USEPOLLING: "true"
+    volumes:
+      - ./frontend/portal-empleado:/workspace/frontend/portal-empleado
+      - frontend-node-modules:/workspace/frontend/portal-empleado/node_modules
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
+
+volumes:
+  api-data:
+  frontend-node-modules:

@@ -1,0 +1,27 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: SAED-PortalEmpleado.Api/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://0.0.0.0:5011
+      Authentication__DevLogin__Enabled: "false"
+      Directory__ServiceAccountJsonPath: /app/secrets/saed-rrhh-sa.json
+    volumes:
+      - api-data:/app/App_Data
+      - ./secrets:/app/secrets:ro
+    ports:
+      - "5011:5011"
+
+  web:
+    build:
+      context: .
+      dockerfile: frontend/portal-empleado/Dockerfile
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+
+volumes:
+  api-data:
