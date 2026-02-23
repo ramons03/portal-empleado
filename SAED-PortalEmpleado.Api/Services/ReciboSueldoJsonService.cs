@@ -75,7 +75,7 @@ public sealed class ReciboSueldoJsonService : IReciboSueldoJsonService
             _configuration["ReciboSueldo:S3:Bucket"] ?? string.Empty,
             _configuration["ReciboSueldo:S3:Region"] ?? string.Empty,
             _configuration["ReciboSueldo:S3:Prefix"] ?? string.Empty,
-            _configuration["ReciboSueldo:S3:KeyTemplate"] ?? "Personal_{cuil}_{period}.json"
+            _configuration["ReciboSueldo:S3:KeyTemplate"] ?? "{period}/Personal_{cuil}_{period}.json"
         );
     }
 
@@ -110,16 +110,28 @@ public sealed class ReciboSueldoJsonService : IReciboSueldoJsonService
             return [];
         }
 
-        var files = Directory.EnumerateFiles(dataDirectory, "*.json", SearchOption.AllDirectories);
+        var periods = BuildAllowedPeriods(nowUtc);
         var reciboSueldoItems = new List<ReciboDocument>();
 
-        foreach (var file in files)
+        foreach (var period in periods)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            if (TryParseReciboFile(file, normalizedCuil, nowUtc, out var recibo) && recibo is not null)
+            foreach (var periodDirectory in BuildLocalPeriodDirectories(dataDirectory, period))
             {
-                reciboSueldoItems.Add(recibo);
+                if (!Directory.Exists(periodDirectory))
+                {
+                    continue;
+                }
+
+                var files = Directory.EnumerateFiles(periodDirectory, "*.json", SearchOption.TopDirectoryOnly);
+                foreach (var file in files)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    if (TryParseReciboFile(file, normalizedCuil, nowUtc, forcedPeriod: period, out var recibo) && recibo is not null)
+                    {
+                        reciboSueldoItems.Add(recibo);
+                    }
+                }
             }
         }
 
@@ -144,45 +156,52 @@ public sealed class ReciboSueldoJsonService : IReciboSueldoJsonService
             var addedForPeriod = false;
             foreach (var cuil in cuilFormats)
             {
-                var key = BuildS3Key(cuil, normalizedCuil, period.StorageToken);
-                if (string.IsNullOrWhiteSpace(key))
+                foreach (var key in BuildS3Keys(cuil, normalizedCuil, period))
                 {
-                    continue;
-                }
-
-                try
-                {
-                    var response = await s3Client.GetObjectAsync(new GetObjectRequest
+                    if (string.IsNullOrWhiteSpace(key))
                     {
-                        BucketName = _s3Settings.Bucket,
-                        Key = key
-                    }, cancellationToken);
+                        continue;
+                    }
 
-                    await using var stream = response.ResponseStream;
-                    using var reader = new StreamReader(stream);
-                    var json = await reader.ReadToEndAsync();
-
-                    if (TryParseReciboJson(
-                        json,
-                        sourceId: $"s3://{_s3Settings.Bucket}/{key}",
-                        sourceLastWriteUtc: response.LastModified.ToUniversalTime(),
-                        normalizedCuil: normalizedCuil,
-                        nowUtc: nowUtc,
-                        forcedPeriod: period,
-                        out var recibo) && recibo is not null)
+                    try
                     {
-                        reciboSueldoItems.Add(recibo);
-                        addedForPeriod = true;
-                        break;
+                        var response = await s3Client.GetObjectAsync(new GetObjectRequest
+                        {
+                            BucketName = _s3Settings.Bucket,
+                            Key = key
+                        }, cancellationToken);
+
+                        await using var stream = response.ResponseStream;
+                        using var reader = new StreamReader(stream);
+                        var json = await reader.ReadToEndAsync();
+
+                        if (TryParseReciboJson(
+                            json,
+                            sourceId: $"s3://{_s3Settings.Bucket}/{key}",
+                            sourceLastWriteUtc: response.LastModified.ToUniversalTime(),
+                            normalizedCuil: normalizedCuil,
+                            nowUtc: nowUtc,
+                            forcedPeriod: period,
+                            out var recibo) && recibo is not null)
+                        {
+                            reciboSueldoItems.Add(recibo);
+                            addedForPeriod = true;
+                            break;
+                        }
+                    }
+                    catch (AmazonS3Exception ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound || string.Equals(ex.ErrorCode, "NoSuchKey", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Missing file for this cuil/period is expected; continue trying other key variations.
+                    }
+                    catch (AmazonS3Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Error downloading recibo from S3 bucket {Bucket} key {Key}", _s3Settings.Bucket, key);
                     }
                 }
-                catch (AmazonS3Exception ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound || string.Equals(ex.ErrorCode, "NoSuchKey", StringComparison.OrdinalIgnoreCase))
+
+                if (addedForPeriod)
                 {
-                    // Missing file for this cuil/period is expected; continue trying other key variations.
-                }
-                catch (AmazonS3Exception ex)
-                {
-                    _logger.LogWarning(ex, "Error downloading recibo from S3 bucket {Bucket} key {Key}", _s3Settings.Bucket, key);
+                    break;
                 }
             }
 
@@ -223,7 +242,16 @@ public sealed class ReciboSueldoJsonService : IReciboSueldoJsonService
         return Path.GetFullPath(Path.Combine(_hostEnvironment.ContentRootPath, configured));
     }
 
-    private bool TryParseReciboFile(string filePath, string normalizedCuil, DateTime nowUtc, out ReciboDocument? recibo)
+    private static IReadOnlyList<string> BuildLocalPeriodDirectories(string baseDirectory, ReciboPeriod period)
+    {
+        return new[] { period.Id, period.StorageToken }
+            .Where(v => !string.IsNullOrWhiteSpace(v))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(folder => Path.Combine(baseDirectory, folder))
+            .ToArray();
+    }
+
+    private bool TryParseReciboFile(string filePath, string normalizedCuil, DateTime nowUtc, ReciboPeriod? forcedPeriod, out ReciboDocument? recibo)
     {
         try
         {
@@ -235,7 +263,7 @@ public sealed class ReciboSueldoJsonService : IReciboSueldoJsonService
                 sourceLastWriteUtc: lastWriteUtc,
                 normalizedCuil: normalizedCuil,
                 nowUtc: nowUtc,
-                forcedPeriod: null,
+                forcedPeriod: forcedPeriod,
                 out recibo);
         }
         catch (Exception ex)
@@ -479,23 +507,48 @@ public sealed class ReciboSueldoJsonService : IReciboSueldoJsonService
             .ToArray();
     }
 
-    private string BuildS3Key(string cuil, string cuilDigits, string periodToken)
+    private IReadOnlyList<string> BuildS3Keys(string cuil, string cuilDigits, ReciboPeriod period)
     {
         var template = string.IsNullOrWhiteSpace(_s3Settings.KeyTemplate)
-            ? "Personal_{cuil}_{period}.json"
+            ? "{period}/Personal_{cuil}_{period}.json"
             : _s3Settings.KeyTemplate;
 
-        var relativeKey = template
-            .Replace("{cuil}", cuil, StringComparison.OrdinalIgnoreCase)
-            .Replace("{cuil_digits}", cuilDigits, StringComparison.OrdinalIgnoreCase)
-            .Replace("{period}", periodToken, StringComparison.OrdinalIgnoreCase);
+        var periodTokenCandidates = new[] { period.StorageToken, period.Id }
+            .Where(v => !string.IsNullOrWhiteSpace(v))
+            .Distinct(StringComparer.OrdinalIgnoreCase);
 
-        if (string.IsNullOrWhiteSpace(_s3Settings.Prefix))
+        var periodFolderCandidates = new[] { period.StorageToken, period.Id }
+            .Where(v => !string.IsNullOrWhiteSpace(v))
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+
+        var keys = new List<string>();
+
+        foreach (var periodToken in periodTokenCandidates)
         {
-            return relativeKey.TrimStart('/');
+            foreach (var periodFolder in periodFolderCandidates)
+            {
+                var relativeKey = template
+                    .Replace("{cuil}", cuil, StringComparison.OrdinalIgnoreCase)
+                    .Replace("{cuil_digits}", cuilDigits, StringComparison.OrdinalIgnoreCase)
+                    .Replace("{period}", periodToken, StringComparison.OrdinalIgnoreCase)
+                    .Replace("{period_token}", periodToken, StringComparison.OrdinalIgnoreCase)
+                    .Replace("{period_id}", period.Id, StringComparison.OrdinalIgnoreCase)
+                    .Replace("{period_folder}", periodFolder, StringComparison.OrdinalIgnoreCase);
+
+                var fullKey = string.IsNullOrWhiteSpace(_s3Settings.Prefix)
+                    ? relativeKey.TrimStart('/')
+                    : $"{_s3Settings.Prefix.Trim().TrimEnd('/')}/{relativeKey.TrimStart('/')}";
+
+                if (!string.IsNullOrWhiteSpace(fullKey))
+                {
+                    keys.Add(fullKey);
+                }
+            }
         }
 
-        return $"{_s3Settings.Prefix.Trim().TrimEnd('/')}/{relativeKey.TrimStart('/')}";
+        return keys
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     private IAmazonS3 CreateS3Client()

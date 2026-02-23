@@ -16,6 +16,7 @@ Portal Empleado SAED con:
 
 2. ReciboSueldo:
 - Fuente local JSON por CUIL y período.
+- Estructura esperada: carpeta por período dentro de `recibo-sueldo/` (ej: `202601/`, `2025-11/`, `2025s1/`).
 - Soporte S3 (AWS) con `KeyTemplate`.
 - Límite de antigüedad configurable por `ReciboSueldo__MaxMonthsBack` (default 12).
 - Incluye períodos SAC (`YYYYs1`, `YYYYs2`).
@@ -69,4 +70,3 @@ Portal Empleado SAED con:
 - "Aplicá cambio + ejecutá checklist mínimo".
 - "Corré pruebas QA completas de ReciboSueldo".
 - "Prepará deploy prod y validá configuración efectiva".
-
