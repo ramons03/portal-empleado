@@ -156,6 +156,10 @@ try
     {
         options.ClientId = builder.Configuration["Authentication:Google:ClientId"] ?? throw new InvalidOperationException("Google ClientId not configured");
         options.ClientSecret = builder.Configuration["Authentication:Google:ClientSecret"] ?? throw new InvalidOperationException("Google ClientSecret not configured");
+        options.CallbackPath = "/signin-google";
+        options.CorrelationCookie.SameSite = SameSiteMode.None;
+        options.CorrelationCookie.SecurePolicy = CookieSecurePolicy.Always;
+        options.CorrelationCookie.HttpOnly = true;
         options.SaveTokens = true;
         options.Scope.Add("profile");
         options.Scope.Add("email");
@@ -251,11 +255,9 @@ try
 
     var app = builder.Build();
 
-    if (app.Environment.IsDevelopment())
+    using (var scope = app.Services.CreateScope())
     {
-        using var scope = app.Services.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<SAED_PortalEmpleado.Infrastructure.Persistence.ApplicationDbContext>();
-
         if (dbContext.Database.IsSqlite())
         {
             dbContext.Database.Migrate();
