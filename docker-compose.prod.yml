@@ -12,7 +12,7 @@ services:
       Directory__ServiceAccountJsonPath: ${Directory__ServiceAccountJsonPath:-/app/secrets/saed-rrhh-sa.json}
     volumes:
       - api-data:/app/App_Data
-      - ./secrets:/app/secrets:ro
+      - ${Directory__ServiceAccountHostPath:-./secrets/saed-rrhh-sa.json}:/app/secrets/saed-rrhh-sa.json:ro
     ports:
       - "5011:5011"
 
