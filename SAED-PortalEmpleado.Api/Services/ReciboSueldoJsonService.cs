@@ -40,7 +40,8 @@ public sealed record ReciboSueldoS3Settings(
     string Bucket,
     string Region,
     string Prefix,
-    string KeyTemplate
+    string KeyTemplate,
+    bool TraceSearches
 );
 
 public sealed class ReciboSueldoJsonService : IReciboSueldoJsonService
@@ -75,8 +76,20 @@ public sealed class ReciboSueldoJsonService : IReciboSueldoJsonService
             _configuration["ReciboSueldo:S3:Bucket"] ?? string.Empty,
             _configuration["ReciboSueldo:S3:Region"] ?? string.Empty,
             _configuration["ReciboSueldo:S3:Prefix"] ?? string.Empty,
-            _configuration["ReciboSueldo:S3:KeyTemplate"] ?? "{period}/Personal_{cuil}_{period}.json"
+            _configuration["ReciboSueldo:S3:KeyTemplate"] ?? "{period}/Personal_{cuil}_{period}.json",
+            _configuration.GetValue<bool>("ReciboSueldo:S3:TraceSearches", false)
         );
+    }
+
+    private void LogS3Trace(string messageTemplate, params object[] propertyValues)
+    {
+        if (_s3Settings.TraceSearches)
+        {
+            _logger.LogInformation(messageTemplate, propertyValues);
+            return;
+        }
+
+        _logger.LogDebug(messageTemplate, propertyValues);
     }
 
     public async Task<IReadOnlyList<ReciboDocument>> GetReciboSueldoForCuilAsync(string cuil, CancellationToken cancellationToken = default)
@@ -149,11 +162,24 @@ public sealed class ReciboSueldoJsonService : IReciboSueldoJsonService
         using var s3Client = CreateS3Client();
         var periods = BuildAllowedPeriods(nowUtc);
         var cuilFormats = BuildCuilFormats(normalizedCuil);
+        var attemptedKeys = 0;
+        var downloadedObjects = 0;
 
         var reciboSueldoItems = new List<ReciboDocument>();
+        LogS3Trace(
+            "ReciboSueldo S3 search started. Bucket={Bucket} Region={Region} Prefix={Prefix} Template={Template} Cuil={Cuil} PeriodCount={PeriodCount}",
+            _s3Settings.Bucket,
+            _s3Settings.Region,
+            _s3Settings.Prefix,
+            _s3Settings.KeyTemplate,
+            normalizedCuil,
+            periods.Count);
+
         foreach (var period in periods)
         {
             var addedForPeriod = false;
+            LogS3Trace("ReciboSueldo S3 searching period {PeriodId} (token {PeriodToken})", period.Id, period.StorageToken);
+
             foreach (var cuil in cuilFormats)
             {
                 foreach (var key in BuildS3Keys(cuil, normalizedCuil, period))
@@ -162,6 +188,8 @@ public sealed class ReciboSueldoJsonService : IReciboSueldoJsonService
                     {
                         continue;
                     }
+                    attemptedKeys++;
+                    LogS3Trace("ReciboSueldo S3 trying key {Key} for period {PeriodId} and cuil {Cuil}", key, period.Id, cuil);
 
                     try
                     {
@@ -170,6 +198,8 @@ public sealed class ReciboSueldoJsonService : IReciboSueldoJsonService
                             BucketName = _s3Settings.Bucket,
                             Key = key
                         }, cancellationToken);
+                        downloadedObjects++;
+                        LogS3Trace("ReciboSueldo S3 key hit {Key} for period {PeriodId}", key, period.Id);
 
                         await using var stream = response.ResponseStream;
                         using var reader = new StreamReader(stream);
@@ -186,12 +216,16 @@ public sealed class ReciboSueldoJsonService : IReciboSueldoJsonService
                         {
                             reciboSueldoItems.Add(recibo);
                             addedForPeriod = true;
+                            _logger.LogInformation("ReciboSueldo S3 receipt selected for period {PeriodId} from key {Key}", period.Id, key);
                             break;
                         }
+
+                        LogS3Trace("ReciboSueldo S3 key {Key} downloaded but did not match parser filters", key);
                     }
                     catch (AmazonS3Exception ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound || string.Equals(ex.ErrorCode, "NoSuchKey", StringComparison.OrdinalIgnoreCase))
                     {
                         // Missing file for this cuil/period is expected; continue trying other key variations.
+                        LogS3Trace("ReciboSueldo S3 key miss {Key}", key);
                     }
                     catch (AmazonS3Exception ex)
                     {
@@ -209,7 +243,17 @@ public sealed class ReciboSueldoJsonService : IReciboSueldoJsonService
             {
                 continue;
             }
+
+            LogS3Trace("ReciboSueldo S3 no file found for period {PeriodId}", period.Id);
         }
+
+        _logger.LogInformation(
+            "ReciboSueldo S3 search finished. Cuil={Cuil} Periods={PeriodCount} TriedKeys={TriedKeys} Downloaded={Downloaded} Matched={Matched}",
+            normalizedCuil,
+            periods.Count,
+            attemptedKeys,
+            downloadedObjects,
+            reciboSueldoItems.Count);
 
         return reciboSueldoItems;
     }
