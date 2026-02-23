@@ -123,9 +123,14 @@ public class AuthController : ControllerBase
     [AllowAnonymous]
     public async Task<IActionResult> GoogleCallback()
     {
-        // Authenticate with Google scheme to get the external authentication result
-        var authenticateResult = await HttpContext.AuthenticateAsync(GoogleDefaults.AuthenticationScheme);
-        
+        // OAuth callback principal is signed in via cookie scheme by Google handler.
+        var authenticateResult = await HttpContext.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+        if (!authenticateResult.Succeeded || authenticateResult.Principal == null)
+        {
+            // Fallback for edge cases where provider ticket is still accessible via Google scheme.
+            authenticateResult = await HttpContext.AuthenticateAsync(GoogleDefaults.AuthenticationScheme);
+        }
+
         if (!authenticateResult.Succeeded)
         {
             _logger.LogWarning("Authentication failed");
