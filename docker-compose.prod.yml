@@ -18,6 +18,8 @@ services:
     build:
       context: .
       dockerfile: frontend/portal-empleado/Dockerfile
+    environment:
+      API_UPSTREAM: ${API_UPSTREAM:-https://api.mi.saed.digital}
     ports:
       - "5173:80"
     depends_on:

@@ -14,7 +14,6 @@ type HomeProps = {
 export default function Home({ features }: HomeProps) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [cuilInput, setCuilInput] = useState('');
   const [cuilSaving, setCuilSaving] = useState(false);
   const [cuilError, setCuilError] = useState<string | null>(null);
@@ -72,14 +71,6 @@ export default function Home({ features }: HomeProps) {
     return (
       <div className="home-container">
         <div className="loading">Cargando...</div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="home-container">
-        <div className="error">{error}</div>
       </div>
     );
   }

@@ -187,6 +187,31 @@ For production, update allowed origins in `appsettings.Production.json`:
 }
 ```
 
+#### Frontend Production API Upstream (Docker/Nginx)
+
+In production, the frontend keeps using same-origin paths (`/api` and `/signin-google`).
+Nginx forwards those requests to the backend URL defined by `API_UPSTREAM` at container startup.
+
+Default value in `docker-compose.prod.yml`:
+
+```bash
+API_UPSTREAM=https://api.mi.saed.digital
+```
+
+You can set it with a `.env` file or override it at deploy time:
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+```bash
+API_UPSTREAM=https://api.staging.mi.saed.digital docker compose -f docker-compose.prod.yml up -d --build
+```
+
+Troubleshooting:
+- If `/api/*` returns `502`, verify `API_UPSTREAM` is reachable from the `web` container and TLS is valid.
+- Check rendered Nginx config inside container: `docker compose -f docker-compose.prod.yml exec web cat /etc/nginx/conf.d/default.conf`.
+
 ## 📚 API Endpoints
 
 ### Authentication Endpoints
