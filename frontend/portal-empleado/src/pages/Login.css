@@ -27,6 +27,17 @@
   margin-bottom: 2rem;
 }
 
+.login-warning {
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid #f5c2c7;
+  background: #fff3cd;
+  color: #664d03;
+  font-size: 0.95rem;
+  text-align: left;
+}
+
 .login-button {
   display: flex;
   align-items: center;

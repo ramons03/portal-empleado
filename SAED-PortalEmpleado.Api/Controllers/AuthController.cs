@@ -63,6 +63,17 @@ public class AuthController : ControllerBase
             RedirectUri = Url.Action(nameof(GoogleCallback)),
             Items = { { "returnUrl", returnUrl } }
         };
+
+        // Always force account picker to avoid silently reusing the wrong Google account.
+        properties.Parameters["prompt"] = "select_account";
+
+        // Domain hint for Google account chooser (does not hard-block on its own).
+        var requiredDomain = GetPrimaryAllowedEmailDomain();
+        if (!string.IsNullOrWhiteSpace(requiredDomain))
+        {
+            properties.Parameters["hd"] = requiredDomain;
+        }
+
         return Challenge(properties, GoogleDefaults.AuthenticationScheme);
     }
 
@@ -147,7 +158,10 @@ public class AuthController : ControllerBase
         if (!IsEmailAllowed(email))
         {
             _logger.LogWarning("Login blocked for email: {Email}", email ?? "(null)");
-            return Forbid();
+
+            // Clear local auth cookie and return user to login page with a friendly message.
+            await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+            return Redirect(BuildLoginRedirectUrl("domain_not_allowed", GetPrimaryAllowedEmailDomain()));
         }
 
         // Use MediatR to handle the authentication logic
@@ -200,6 +214,26 @@ public class AuthController : ControllerBase
         var domain = email[(atIndex + 1)..];
         return allowedDomains.Any(d =>
             string.Equals(d, domain, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private string? GetPrimaryAllowedEmailDomain()
+    {
+        return _configuration
+            .GetSection("Authentication:AllowedEmailDomains")
+            .Get<string[]>()
+            ?.FirstOrDefault(d => !string.IsNullOrWhiteSpace(d));
+    }
+
+    private static string BuildLoginRedirectUrl(string errorCode, string? requiredDomain)
+    {
+        var url = $"/login?error={Uri.EscapeDataString(errorCode)}";
+
+        if (!string.IsNullOrWhiteSpace(requiredDomain))
+        {
+            url += $"&requiredDomain={Uri.EscapeDataString(requiredDomain)}";
+        }
+
+        return url;
     }
 
     private bool IsDevLoginEnabled()
