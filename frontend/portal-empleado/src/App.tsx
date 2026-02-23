@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import Login from './pages/Login';
 import Home from './pages/Home';
-import Recibos from './pages/Recibos';
+import ReciboSueldo from './pages/ReciboSueldo';
 import Vacaciones from './pages/Vacaciones';
 import Gestion from './pages/Gestion';
 import { getDefaultFeatures, loadFeatures, type FeatureFlags } from './config/features';
@@ -19,7 +19,7 @@ function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/" element={<Home features={features} />} />
-        <Route path="/recibos" element={<Recibos features={features} />} />
+        <Route path="/recibo-sueldo" element={<ReciboSueldo features={features} />} />
         <Route path="/gestion" element={<Gestion features={features} />} />
         {features.vacaciones
           ? <Route path="/vacaciones" element={<Vacaciones />} />

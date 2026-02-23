@@ -81,8 +81,8 @@ export default function Home({ features }: HomeProps) {
         <div className="nav-content">
           <h1>Portal Empleado</h1>
           <div className="nav-actions">
-            <button onClick={() => navigate('/recibos')} className="nav-link">
-              Recibos
+            <button onClick={() => navigate('/recibo-sueldo')} className="nav-link">
+              ReciboSueldo
             </button>
             <button onClick={() => navigate('/gestion')} className="nav-link">
               Gestion
@@ -136,9 +136,9 @@ export default function Home({ features }: HomeProps) {
           <div className="quick-actions">
             <h3>Acciones Rápidas</h3>
             <div className="action-cards">
-              <div className="action-card" onClick={() => navigate('/recibos')}>
-                <h4>📄 Recibos de Nómina</h4>
-                <p>Ver tus recibos de pago</p>
+              <div className="action-card" onClick={() => navigate('/recibo-sueldo')}>
+                <h4>📄 ReciboSueldo</h4>
+                <p>Ver ReciboSueldo</p>
               </div>
               <div className="action-card" onClick={() => navigate('/gestion')}>
                 <h4>🧭 Gestion y RRHH</h4>

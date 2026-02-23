@@ -105,7 +105,7 @@ frontend/portal-empleado/
 │   ├── pages/
 │   │   ├── Login.tsx/css          # Google OAuth login page
 │   │   ├── Home.tsx/css           # Main dashboard
-│   │   ├── Recibos.tsx/css        # Payroll receipts (placeholder)
+│   │   ├── ReciboSueldo.tsx/css        # Payroll receipts (placeholder)
 │   │   └── Vacaciones.tsx/css     # Vacation requests (placeholder)
 │   ├── services/
 │   │   └── auth.ts                # Authentication API service
@@ -130,10 +130,10 @@ frontend/portal-empleado/
 - Calls `GET /api/auth/me` on mount
 - Redirects to `/login` if 401 (unauthorized)
 - Displays user information (name, email, profile picture)
-- Navigation to Recibos and Vacaciones
+- Navigation to ReciboSueldo and Vacaciones
 - Logout button with CSRF protection
 
-#### Recibos Page (`/recibos`)
+#### ReciboSueldo Page (`/recibo-sueldo`)
 - Placeholder for payroll receipts functionality
 - Indicates integration with Nomina microservice
 - Navigation back to Home
@@ -179,7 +179,7 @@ interface ApiError {
 
 - `/login` - Login page (public)
 - `/` - Home page (protected)
-- `/recibos` - Recibos page (protected)
+- `/recibo-sueldo` - ReciboSueldo page (protected)
 - `/vacaciones` - Vacaciones page (protected)
 - `*` - Redirects to Home
 

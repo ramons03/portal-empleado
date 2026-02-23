@@ -33,7 +33,7 @@ SAED-PortalEmpleado/
 ```
 frontend/portal-empleado/
 ├── src/
-│   ├── pages/      # React page components (Login, Home, Recibos, Vacaciones)
+│   ├── pages/      # React page components (Login, Home, ReciboSueldo, Vacaciones)
 │   ├── services/   # API service layer
 │   ├── types/      # TypeScript type definitions
 │   └── App.tsx     # Main app with React Router

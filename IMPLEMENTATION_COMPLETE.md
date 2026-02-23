@@ -78,7 +78,7 @@ Application/
    - Logout button with CSRF protection
    - 401 handling with redirect to login
 
-3. **Recibos Page** (`/recibos`)
+3. **ReciboSueldo Page** (`/recibo-sueldo`)
    - Placeholder for payroll receipts
    - Indicates future Nomina microservice integration
 
@@ -245,7 +245,7 @@ frontend/portal-empleado/
 ### Microservice Integration
 - ✅ INominaService interface (for payroll)
 - ✅ IAsistenciaService interface (for attendance)
-- ✅ Placeholder pages (Recibos, Vacaciones)
+- ✅ Placeholder pages (ReciboSueldo, Vacaciones)
 - ✅ Repository pattern for data access
 - ✅ BFF architecture for service orchestration
 
@@ -299,7 +299,7 @@ frontend/portal-empleado/
 
 ✅ **Ready for:**
 - Development and testing
-- Feature implementation (Recibos, Vacaciones)
+- Feature implementation (ReciboSueldo, Vacaciones)
 - Microservice integration
 - Production deployment (with proper configuration)
 

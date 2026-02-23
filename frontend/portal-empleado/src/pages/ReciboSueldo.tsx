@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getReciboPdfUrl, getRecibos, logRecibosView, type ReciboItem } from '../services/recibos';
+import { getReciboPdfUrl, getReciboSueldo, logReciboSueldoView, type ReciboItem } from '../services/recibo-sueldo';
 import { logger } from '../services/logger';
 import type { FeatureFlags } from '../config/features';
-import './Recibos.css';
+import './ReciboSueldo.css';
 
-type RecibosProps = {
+type ReciboSueldoProps = {
   features: FeatureFlags;
 };
 
-export default function Recibos({ features }: RecibosProps) {
+export default function ReciboSueldo({ features }: ReciboSueldoProps) {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -18,12 +18,12 @@ export default function Recibos({ features }: RecibosProps) {
   useEffect(() => {
     const load = async () => {
       try {
-        await logRecibosView('page');
-        const data = await getRecibos();
+        await logReciboSueldoView('page');
+        const data = await getReciboSueldo();
         setItems(data.items);
       } catch (err) {
-        logger.captureError(err, 'Recibos.load');
-        const msg = err instanceof Error ? err.message : 'No se pudieron cargar los recibos.';
+        logger.captureError(err, 'ReciboSueldo.load');
+        const msg = err instanceof Error ? err.message : 'No se pudo cargar ReciboSueldo.';
         setError(msg);
       } finally {
         setLoading(false);
@@ -35,14 +35,14 @@ export default function Recibos({ features }: RecibosProps) {
 
   const handleView = async (recibo: ReciboItem) => {
     try {
-      await logRecibosView('open', recibo.id);
+      await logReciboSueldoView('open', recibo.id);
       const pdfUrl = recibo.pdfUrl ?? getReciboPdfUrl(recibo.id);
       const popup = window.open(pdfUrl, '_blank', 'noopener,noreferrer');
       if (!popup) {
         window.location.href = pdfUrl;
       }
     } catch (err) {
-      logger.captureError(err, 'Recibos.handleView');
+      logger.captureError(err, 'ReciboSueldo.handleView');
     }
   };
 
@@ -69,14 +69,14 @@ export default function Recibos({ features }: RecibosProps) {
 
       <main className="main-content">
         <div className="page-card">
-          <h2>📄 Recibos de Nómina</h2>
-          {loading && <p className="placeholder-text">Cargando recibos...</p>}
+          <h2>📄 ReciboSueldo</h2>
+          {loading && <p className="placeholder-text">Cargando ReciboSueldo...</p>}
           {error && <p className="placeholder-text">{error}</p>}
           {!loading && !error && items.length === 0 && (
-            <p className="placeholder-text">No hay recibos para mostrar.</p>
+            <p className="placeholder-text">No hay elementos de ReciboSueldo para mostrar.</p>
           )}
           {!loading && !error && items.length > 0 && (
-            <div className="recibos-list">
+            <div className="recibo-sueldo-list">
               {items.map((recibo) => (
                 <div key={recibo.id} className="recibo-card">
                   <div className="recibo-info">

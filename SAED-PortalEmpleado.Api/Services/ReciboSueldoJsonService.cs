@@ -9,9 +9,9 @@ using SAED_PortalEmpleado.Application.Common.Interfaces;
 
 namespace SAED_PortalEmpleado.Api.Services;
 
-public interface IRecibosJsonService
+public interface IReciboSueldoJsonService
 {
-    Task<IReadOnlyList<ReciboDocument>> GetRecibosForCuilAsync(string cuil, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<ReciboDocument>> GetReciboSueldoForCuilAsync(string cuil, CancellationToken cancellationToken = default);
     Task<ReciboDocument?> GetReciboByIdForCuilAsync(string cuil, string reciboId, CancellationToken cancellationToken = default);
 }
 
@@ -35,7 +35,7 @@ public sealed record ReciboDocument(
     DateTime SourceLastWriteUtc
 );
 
-public sealed record RecibosS3Settings(
+public sealed record ReciboSueldoS3Settings(
     bool Enabled,
     string Bucket,
     string Region,
@@ -43,7 +43,7 @@ public sealed record RecibosS3Settings(
     string KeyTemplate
 );
 
-public sealed class RecibosJsonService : IRecibosJsonService
+public sealed class ReciboSueldoJsonService : IReciboSueldoJsonService
 {
     private static readonly Regex SacPeriodRegex = new(@"(?<year>\d{4})\s*s(?<sac>[12])", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex MonthlyPeriodRegex = new(@"(?<year>\d{4})[-_]?(?<month>0[1-9]|1[0-2])", RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -56,30 +56,30 @@ public sealed class RecibosJsonService : IRecibosJsonService
     private readonly IConfiguration _configuration;
     private readonly IDateTimeProvider _dateTimeProvider;
     private readonly IHostEnvironment _hostEnvironment;
-    private readonly ILogger<RecibosJsonService> _logger;
-    private readonly RecibosS3Settings _s3Settings;
+    private readonly ILogger<ReciboSueldoJsonService> _logger;
+    private readonly ReciboSueldoS3Settings _s3Settings;
 
-    public RecibosJsonService(
+    public ReciboSueldoJsonService(
         IConfiguration configuration,
         IDateTimeProvider dateTimeProvider,
         IHostEnvironment hostEnvironment,
-        ILogger<RecibosJsonService> logger)
+        ILogger<ReciboSueldoJsonService> logger)
     {
         _configuration = configuration;
         _dateTimeProvider = dateTimeProvider;
         _hostEnvironment = hostEnvironment;
         _logger = logger;
 
-        _s3Settings = new RecibosS3Settings(
-            configuration.GetValue<bool>("Recibos:S3:Enabled"),
-            configuration["Recibos:S3:Bucket"] ?? string.Empty,
-            configuration["Recibos:S3:Region"] ?? string.Empty,
-            configuration["Recibos:S3:Prefix"] ?? string.Empty,
-            configuration["Recibos:S3:KeyTemplate"] ?? "Personal_{cuil}_{period}.json"
+        _s3Settings = new ReciboSueldoS3Settings(
+            _configuration.GetValue<bool>("ReciboSueldo:S3:Enabled", false),
+            _configuration["ReciboSueldo:S3:Bucket"] ?? string.Empty,
+            _configuration["ReciboSueldo:S3:Region"] ?? string.Empty,
+            _configuration["ReciboSueldo:S3:Prefix"] ?? string.Empty,
+            _configuration["ReciboSueldo:S3:KeyTemplate"] ?? "Personal_{cuil}_{period}.json"
         );
     }
 
-    public async Task<IReadOnlyList<ReciboDocument>> GetRecibosForCuilAsync(string cuil, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<ReciboDocument>> GetReciboSueldoForCuilAsync(string cuil, CancellationToken cancellationToken = default)
     {
         var normalizedCuil = NormalizeCuil(cuil);
         if (string.IsNullOrWhiteSpace(normalizedCuil))
@@ -88,11 +88,11 @@ public sealed class RecibosJsonService : IRecibosJsonService
         }
 
         var now = _dateTimeProvider.UtcNow;
-        var recibos = _s3Settings.Enabled
-            ? await GetRecibosFromS3Async(normalizedCuil, now, cancellationToken)
-            : GetRecibosFromLocalDirectory(normalizedCuil, now, cancellationToken);
+        var reciboSueldoItems = _s3Settings.Enabled
+            ? await GetReciboSueldoFromS3Async(normalizedCuil, now, cancellationToken)
+            : GetReciboSueldoFromLocalDirectory(normalizedCuil, now, cancellationToken);
 
-        var deduped = recibos
+        var deduped = reciboSueldoItems
             .GroupBy(r => r.Id, StringComparer.OrdinalIgnoreCase)
             .Select(g => g.OrderByDescending(x => x.SourceLastWriteUtc).First())
             .OrderByDescending(r => r.FechaEmision)
@@ -101,17 +101,17 @@ public sealed class RecibosJsonService : IRecibosJsonService
         return deduped;
     }
 
-    private IReadOnlyList<ReciboDocument> GetRecibosFromLocalDirectory(string normalizedCuil, DateTime nowUtc, CancellationToken cancellationToken)
+    private IReadOnlyList<ReciboDocument> GetReciboSueldoFromLocalDirectory(string normalizedCuil, DateTime nowUtc, CancellationToken cancellationToken)
     {
         var dataDirectory = ResolveDataDirectory();
         if (!Directory.Exists(dataDirectory))
         {
-            _logger.LogWarning("Recibos directory not found: {Directory}", dataDirectory);
+            _logger.LogWarning("ReciboSueldo directory not found: {Directory}", dataDirectory);
             return [];
         }
 
         var files = Directory.EnumerateFiles(dataDirectory, "*.json", SearchOption.AllDirectories);
-        var recibos = new List<ReciboDocument>();
+        var reciboSueldoItems = new List<ReciboDocument>();
 
         foreach (var file in files)
         {
@@ -119,18 +119,18 @@ public sealed class RecibosJsonService : IRecibosJsonService
 
             if (TryParseReciboFile(file, normalizedCuil, nowUtc, out var recibo) && recibo is not null)
             {
-                recibos.Add(recibo);
+                reciboSueldoItems.Add(recibo);
             }
         }
 
-        return recibos;
+        return reciboSueldoItems;
     }
 
-    private async Task<IReadOnlyList<ReciboDocument>> GetRecibosFromS3Async(string normalizedCuil, DateTime nowUtc, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<ReciboDocument>> GetReciboSueldoFromS3Async(string normalizedCuil, DateTime nowUtc, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(_s3Settings.Bucket))
         {
-            _logger.LogWarning("Recibos:S3:Enabled is true but Recibos:S3:Bucket is empty.");
+            _logger.LogWarning("ReciboSueldo:S3:Enabled is true but ReciboSueldo:S3:Bucket is empty.");
             return [];
         }
 
@@ -138,7 +138,7 @@ public sealed class RecibosJsonService : IRecibosJsonService
         var periods = BuildAllowedPeriods(nowUtc);
         var cuilFormats = BuildCuilFormats(normalizedCuil);
 
-        var recibos = new List<ReciboDocument>();
+        var reciboSueldoItems = new List<ReciboDocument>();
         foreach (var period in periods)
         {
             var addedForPeriod = false;
@@ -171,7 +171,7 @@ public sealed class RecibosJsonService : IRecibosJsonService
                         forcedPeriod: period,
                         out var recibo) && recibo is not null)
                     {
-                        recibos.Add(recibo);
+                        reciboSueldoItems.Add(recibo);
                         addedForPeriod = true;
                         break;
                     }
@@ -192,7 +192,7 @@ public sealed class RecibosJsonService : IRecibosJsonService
             }
         }
 
-        return recibos;
+        return reciboSueldoItems;
     }
 
     public async Task<ReciboDocument?> GetReciboByIdForCuilAsync(string cuil, string reciboId, CancellationToken cancellationToken = default)
@@ -203,16 +203,16 @@ public sealed class RecibosJsonService : IRecibosJsonService
             return null;
         }
 
-        var recibos = await GetRecibosForCuilAsync(cuil, cancellationToken);
-        return recibos.FirstOrDefault(r => string.Equals(r.Id, normalizedId, StringComparison.OrdinalIgnoreCase));
+        var reciboSueldoItems = await GetReciboSueldoForCuilAsync(cuil, cancellationToken);
+        return reciboSueldoItems.FirstOrDefault(r => string.Equals(r.Id, normalizedId, StringComparison.OrdinalIgnoreCase));
     }
 
     private string ResolveDataDirectory()
     {
-        var configured = _configuration["Recibos:DataDirectory"];
+        var configured = _configuration["ReciboSueldo:DataDirectory"];
         if (string.IsNullOrWhiteSpace(configured))
         {
-            configured = "../data";
+            configured = "../recibo-sueldo";
         }
 
         if (Path.IsPathRooted(configured))
@@ -415,7 +415,7 @@ public sealed class RecibosJsonService : IRecibosJsonService
 
     private bool IsWithinAllowedWindow(DateTime periodDateUtc, DateTime nowUtc)
     {
-        var maxMonthsBack = _configuration.GetValue<int>("Recibos:MaxMonthsBack", 12);
+        var maxMonthsBack = _configuration.GetValue<int>("ReciboSueldo:MaxMonthsBack", 12);
         if (maxMonthsBack < 1)
         {
             maxMonthsBack = 12;
@@ -429,7 +429,7 @@ public sealed class RecibosJsonService : IRecibosJsonService
 
     private IReadOnlyList<ReciboPeriod> BuildAllowedPeriods(DateTime nowUtc)
     {
-        var maxMonthsBack = _configuration.GetValue<int>("Recibos:MaxMonthsBack", 12);
+        var maxMonthsBack = _configuration.GetValue<int>("ReciboSueldo:MaxMonthsBack", 12);
         if (maxMonthsBack < 1)
         {
             maxMonthsBack = 12;

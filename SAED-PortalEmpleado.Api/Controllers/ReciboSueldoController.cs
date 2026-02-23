@@ -9,38 +9,38 @@ using SAED_PortalEmpleado.Infrastructure.Persistence;
 namespace SAED_PortalEmpleado.Api.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("api/recibo-sueldo")]
 [Authorize]
-public class RecibosController : ControllerBase
+public class ReciboSueldoController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
     private readonly ICurrentUserService _currentUserService;
     private readonly IDateTimeProvider _dateTimeProvider;
     private readonly IConfiguration _configuration;
-    private readonly IRecibosJsonService _recibosJsonService;
+    private readonly IReciboSueldoJsonService _reciboSueldoJsonService;
     private readonly IReciboPdfService _reciboPdfService;
 
-    public RecibosController(
+    public ReciboSueldoController(
         ApplicationDbContext context,
         ICurrentUserService currentUserService,
         IDateTimeProvider dateTimeProvider,
         IConfiguration configuration,
-        IRecibosJsonService recibosJsonService,
+        IReciboSueldoJsonService reciboSueldoJsonService,
         IReciboPdfService reciboPdfService)
     {
         _context = context;
         _currentUserService = currentUserService;
         _dateTimeProvider = dateTimeProvider;
         _configuration = configuration;
-        _recibosJsonService = recibosJsonService;
+        _reciboSueldoJsonService = reciboSueldoJsonService;
         _reciboPdfService = reciboPdfService;
     }
 
     /// <summary>
-    /// Returns payroll receipts for the current user by CUIL.
+    /// Returns payroll receipt documents for the current user by CUIL.
     /// </summary>
     [HttpGet]
-    public async Task<IActionResult> GetRecibos()
+    public async Task<IActionResult> GetReciboSueldo()
     {
         var googleSub = _currentUserService.GoogleSub;
         if (string.IsNullOrWhiteSpace(googleSub))
@@ -60,14 +60,14 @@ public class RecibosController : ControllerBase
         }
 
         ReciboItem[] items;
-        if (ShouldUseMockRecibos())
+        if (ShouldUseMockReciboSueldo())
         {
-            items = BuildMockRecibos();
+            items = BuildMockReciboSueldo();
         }
         else
         {
-            var recibos = await _recibosJsonService.GetRecibosForCuilAsync(employee.Cuil, HttpContext.RequestAborted);
-            items = recibos
+            var reciboSueldoItems = await _reciboSueldoJsonService.GetReciboSueldoForCuilAsync(employee.Cuil, HttpContext.RequestAborted);
+            items = reciboSueldoItems
                 .Select(r => new ReciboItem(
                     r.Id,
                     r.Periodo,
@@ -75,16 +75,16 @@ public class RecibosController : ControllerBase
                     r.Moneda,
                     r.Estado,
                     r.FechaEmision,
-                    $"/api/recibos/{Uri.EscapeDataString(r.Id)}/pdf"))
+                    $"/api/recibo-sueldo/{Uri.EscapeDataString(r.Id)}/pdf"))
                 .ToArray();
         }
 
-        var response = new RecibosResponse(employee.Cuil, items);
+        var response = new ReciboSueldoResponse(employee.Cuil, items);
         return Ok(response);
     }
 
     /// <summary>
-    /// Returns one receipt as PDF for the current user.
+    /// Returns one receipt document as PDF for the current user.
     /// </summary>
     [HttpGet("{reciboId}/pdf")]
     public async Task<IActionResult> GetReciboPdf(string reciboId)
@@ -106,28 +106,28 @@ public class RecibosController : ControllerBase
             return BadRequest(new { message = "CUIL no configurado para el usuario." });
         }
 
-        if (ShouldUseMockRecibos())
+        if (ShouldUseMockReciboSueldo())
         {
-            return NotFound(new { message = "PDF no disponible cuando Recibos:MockData=true." });
+            return NotFound(new { message = "PDF no disponible cuando ReciboSueldo:MockData=true." });
         }
 
-        var recibo = await _recibosJsonService.GetReciboByIdForCuilAsync(employee.Cuil, reciboId, HttpContext.RequestAborted);
+        var recibo = await _reciboSueldoJsonService.GetReciboByIdForCuilAsync(employee.Cuil, reciboId, HttpContext.RequestAborted);
         if (recibo is null)
         {
             return NotFound(new { message = "Recibo no encontrado o fuera del rango permitido (12 meses)." });
         }
 
         var pdfBytes = await _reciboPdfService.BuildPdfAsync(recibo, HttpContext.RequestAborted);
-        var fileName = $"recibo-{recibo.Id}.pdf";
+        var fileName = $"recibo-sueldo-{recibo.Id}.pdf";
         return File(pdfBytes, "application/pdf", fileName);
     }
 
     /// <summary>
-    /// Registers a view/open event for receipts (for analytics).
+    /// Registers a view/open event for recibo-sueldo analytics.
     /// </summary>
     [HttpPost("view")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> LogView([FromBody] RecibosViewRequest request)
+    public async Task<IActionResult> LogView([FromBody] ReciboSueldoViewRequest request)
     {
         var googleSub = _currentUserService.GoogleSub;
         if (string.IsNullOrWhiteSpace(googleSub))
@@ -164,7 +164,7 @@ public class RecibosController : ControllerBase
     }
 
     /// <summary>
-    /// Basic stats for recibos views.
+    /// Basic stats for recibo-sueldo views.
     /// </summary>
     [HttpGet("stats")]
     public async Task<IActionResult> GetStats([FromQuery] int days = 30)
@@ -179,12 +179,12 @@ public class RecibosController : ControllerBase
         return Ok(new { from, days, total, pages, opens });
     }
 
-    private bool ShouldUseMockRecibos()
+    private bool ShouldUseMockReciboSueldo()
     {
-        return _configuration.GetValue<bool>("Recibos:MockData");
+        return _configuration.GetValue<bool>("ReciboSueldo:MockData");
     }
 
-    private ReciboItem[] BuildMockRecibos()
+    private ReciboItem[] BuildMockReciboSueldo()
     {
         var now = _dateTimeProvider.UtcNow;
         return new[]
@@ -196,7 +196,7 @@ public class RecibosController : ControllerBase
     }
 }
 
-public record RecibosResponse(string Cuil, IReadOnlyList<ReciboItem> Items);
+public record ReciboSueldoResponse(string Cuil, IReadOnlyList<ReciboItem> Items);
 
 public record ReciboItem(
     string Id,
@@ -208,4 +208,4 @@ public record ReciboItem(
     string? PdfUrl
 );
 
-public record RecibosViewRequest(string? Action, string? ReciboId);
+public record ReciboSueldoViewRequest(string? Action, string? ReciboId);

@@ -8,7 +8,7 @@ export type ReciboItem = {
   pdfUrl?: string | null;
 };
 
-export type RecibosResponse = {
+export type ReciboSueldoResponse = {
   cuil: string;
   items: ReciboItem[];
 };
@@ -16,11 +16,11 @@ export type RecibosResponse = {
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api';
 
 export function getReciboPdfUrl(reciboId: string): string {
-  return `${API_BASE_URL}/recibos/${encodeURIComponent(reciboId)}/pdf`;
+  return `${API_BASE_URL}/recibo-sueldo/${encodeURIComponent(reciboId)}/pdf`;
 }
 
-export async function getRecibos(): Promise<RecibosResponse> {
-  const response = await fetch(`${API_BASE_URL}/recibos`, {
+export async function getReciboSueldo(): Promise<ReciboSueldoResponse> {
+  const response = await fetch(`${API_BASE_URL}/recibo-sueldo`, {
     credentials: 'include',
   });
 
@@ -31,13 +31,13 @@ export async function getRecibos(): Promise<RecibosResponse> {
         throw new Error(String(data.message));
       }
     }
-    throw new Error(`Failed to get recibos: ${response.statusText}`);
+    throw new Error(`Failed to get recibo-sueldo: ${response.statusText}`);
   }
 
   return await response.json();
 }
 
-export async function logRecibosView(
+export async function logReciboSueldoView(
   action: 'page' | 'open',
   reciboId?: string
 ): Promise<void> {
@@ -49,7 +49,7 @@ export async function logRecibosView(
   }
   const { token } = await csrfResponse.json();
 
-  const response = await fetch(`${API_BASE_URL}/recibos/view`, {
+  const response = await fetch(`${API_BASE_URL}/recibo-sueldo/view`, {
     method: 'POST',
     credentials: 'include',
     headers: {
@@ -60,6 +60,6 @@ export async function logRecibosView(
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to log recibos view: ${response.statusText}`);
+    throw new Error(`Failed to log recibo-sueldo view: ${response.statusText}`);
   }
 }

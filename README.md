@@ -40,7 +40,7 @@ frontend/portal-empleado/
 │   ├── pages/                           # Page components
 │   │   ├── Login.tsx                    # Google OAuth login
 │   │   ├── Home.tsx                     # Main dashboard
-│   │   ├── Recibos.tsx                  # Payroll receipts
+│   │   ├── ReciboSueldo.tsx                  # Payroll receipts
 │   │   └── Vacaciones.tsx               # Vacation requests
 │   ├── services/
 │   │   └── auth.ts                      # Authentication API
@@ -240,11 +240,11 @@ Troubleshooting:
 ### Home (`/`)
 - Main dashboard after authentication
 - Displays user profile information
-- Quick action cards for Recibos and Vacaciones
+- Quick action cards for ReciboSueldo and Vacaciones
 - Navigation and logout functionality
 - Automatic redirect to `/login` if not authenticated (401)
 
-### Recibos (`/recibos`)
+### ReciboSueldo (`/recibo-sueldo`)
 - Placeholder for payroll receipts feature
 - Will integrate with Nomina microservice
 

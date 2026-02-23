@@ -325,8 +325,8 @@ export default function Gestion({ features }: GestionProps) {
             <button onClick={() => navigate('/')} className="nav-link">
               Inicio
             </button>
-            <button onClick={() => navigate('/recibos')} className="nav-link">
-              Recibos
+            <button onClick={() => navigate('/recibo-sueldo')} className="nav-link">
+              ReciboSueldo
             </button>
             {features.vacaciones && (
               <button onClick={() => navigate('/vacaciones')} className="nav-link">

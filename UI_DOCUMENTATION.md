@@ -20,14 +20,14 @@ The application now includes a web-based user interface built with ASP.NET Core 
 - Shows the employee's profile picture (if available from Google)
 - Displays the employee's email address
 - Provides quick access buttons to:
-  - Recibos (Payroll Receipts)
+  - ReciboSueldo (Payroll Receipts)
   - Vacaciones (Vacation Management)
 
 ### Navigation Bar
 
 **When Authenticated:**
 - Application logo/name (links to home)
-- Navigation links to Recibos and Vacaciones
+- Navigation links to ReciboSueldo and Vacaciones
 - User dropdown menu with:
   - Employee name display
   - Logout option
@@ -36,7 +36,7 @@ The application now includes a web-based user interface built with ASP.NET Core 
 
 Both the following pages are protected with the `[Authorize]` attribute and require authentication:
 
-#### Recibos (/recibos)
+#### ReciboSueldo (/recibo-sueldo)
 - Displays payroll receipts information
 - Shows employee name
 - Placeholder content for future implementation
@@ -77,7 +77,7 @@ The UI follows the existing Clean Architecture pattern of the solution:
 ### Authorization
 
 - **Public Pages**: Home page (/)
-- **Protected Pages**: Recibos, Vacaciones (require `[Authorize]` attribute)
+- **Protected Pages**: ReciboSueldo, Vacaciones (require `[Authorize]` attribute)
 - **Unauthenticated Access**: Attempting to access protected pages redirects to Google login
 
 ### Technology Stack
@@ -159,7 +159,7 @@ dotnet user-secrets set "Authentication:Google:ClientSecret" "your-client-secret
 4. Grant permissions to the application
 5. Automatically redirected to home page (now authenticated)
 6. See welcome message with name and profile picture
-7. Navigate to Recibos or Vacaciones as needed
+7. Navigate to ReciboSueldo or Vacaciones as needed
 
 ### Returning User
 

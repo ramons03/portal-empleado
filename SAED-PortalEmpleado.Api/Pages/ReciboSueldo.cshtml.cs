@@ -5,7 +5,7 @@ using System.Security.Claims;
 namespace SAED_PortalEmpleado.Api.Pages;
 
 [Authorize]
-public class RecibosModel : PageModel
+public class ReciboSueldoModel : PageModel
 {
     public string EmployeeName { get; set; } = string.Empty;
 
