@@ -8,6 +8,9 @@ services:
       DOTNET_USE_POLLING_FILE_WATCHER: "1"
       DOTNET_WATCH_SUPPRESS_LAUNCH_BROWSER: "1"
       Authentication__DevLogin__Enabled: "true"
+      DatabaseProvider: Sqlite
+      ConnectionStrings__DefaultConnection: Data Source=/workspace/SAED-PortalEmpleado.Api/App_Data/portal-empleado-dev.db
+      SecuritySettings__Cookie__Secure: "false"
     volumes:
       - ./:/workspace
       - api-data:/workspace/SAED-PortalEmpleado.Api/App_Data
@@ -27,7 +30,7 @@ services:
       - ./frontend/portal-empleado:/workspace/frontend/portal-empleado
       - frontend-node-modules:/workspace/frontend/portal-empleado/node_modules
     ports:
-      - "5173:5173"
+      - "0.0.0.0:5173:5173"
     depends_on:
       - api
 

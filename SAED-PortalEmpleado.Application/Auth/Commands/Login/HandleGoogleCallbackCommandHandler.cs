@@ -50,6 +50,22 @@ public class HandleGoogleCallbackCommandHandler : IRequestHandler<HandleGoogleCa
 
         // Persist or update employee in database
         var employee = await _employeeRepository.GetByGoogleSubAsync(googleSub, cancellationToken);
+        var isNewEmployee = false;
+
+        if (employee == null)
+        {
+            // Fallback to email to avoid duplicate rows when sub changes or dev login seeds differ.
+            employee = await _employeeRepository.GetByEmailAsync(email, cancellationToken);
+
+            if (employee != null)
+            {
+                _logger.LogInformation(
+                    "Relinking existing employee by email {Email} from sub {ExistingSub} to {NewSub}",
+                    employee.Email,
+                    employee.GoogleSub,
+                    googleSub);
+            }
+        }
 
         if (employee == null)
         {
@@ -64,12 +80,12 @@ public class HandleGoogleCallbackCommandHandler : IRequestHandler<HandleGoogleCa
                 PictureUrl = picture,
                 CreatedAt = _dateTimeProvider.UtcNow
             };
-            await _employeeRepository.AddAsync(employee, cancellationToken);
-            _logger.LogInformation("Creating new employee: {Email}", email);
+            isNewEmployee = true;
         }
         else
         {
-            // Update existing employee
+            // Always keep profile data and sub in sync with latest login identity.
+            employee.GoogleSub = googleSub;
             employee.Email = email;
             employee.FullName = name ?? email;
             if (!string.IsNullOrWhiteSpace(cuil))
@@ -77,6 +93,15 @@ public class HandleGoogleCallbackCommandHandler : IRequestHandler<HandleGoogleCa
                 employee.Cuil = cuil;
             }
             employee.PictureUrl = picture;
+        }
+
+        if (isNewEmployee)
+        {
+            await _employeeRepository.AddAsync(employee, cancellationToken);
+            _logger.LogInformation("Creating new employee: {Email}", email);
+        }
+        else
+        {
             await _employeeRepository.UpdateAsync(employee, cancellationToken);
             _logger.LogInformation("Updating existing employee: {Email}", email);
         }
@@ -88,7 +113,7 @@ public class HandleGoogleCallbackCommandHandler : IRequestHandler<HandleGoogleCa
             new Claim(ClaimTypes.Email, email),
             new Claim(ClaimTypes.Name, name ?? email)
         };
-        
+
         if (!string.IsNullOrEmpty(picture))
         {
             cookieClaims.Add(new Claim("picture", picture));

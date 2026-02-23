@@ -8,6 +8,7 @@ namespace SAED_PortalEmpleado.Application.Common.Interfaces;
 public interface IEmployeeRepository
 {
     Task<Employee?> GetByGoogleSubAsync(string googleSub, CancellationToken cancellationToken = default);
+    Task<Employee?> GetByEmailAsync(string email, CancellationToken cancellationToken = default);
     Task<Employee?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
     Task<IEnumerable<Employee>> GetAllAsync(CancellationToken cancellationToken = default);
     Task<Employee> AddAsync(Employee employee, CancellationToken cancellationToken = default);

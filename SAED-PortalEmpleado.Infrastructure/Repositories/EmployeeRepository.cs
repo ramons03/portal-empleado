@@ -20,6 +20,12 @@ public class EmployeeRepository : IEmployeeRepository
             .FirstOrDefaultAsync(e => e.GoogleSub == googleSub, cancellationToken);
     }
 
+    public async Task<Employee?> GetByEmailAsync(string email, CancellationToken cancellationToken = default)
+    {
+        return await _context.Employees
+            .FirstOrDefaultAsync(e => e.Email == email, cancellationToken);
+    }
+
     public async Task<Employee?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
         return await _context.Employees.FindAsync(new object[] { id }, cancellationToken);

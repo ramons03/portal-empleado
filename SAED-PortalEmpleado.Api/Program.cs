@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.EntityFrameworkCore;
 using SAED_PortalEmpleado.Api.Endpoints;
 using SAED_PortalEmpleado.Api.Middleware;
 using SAED_PortalEmpleado.Api.Services;
@@ -236,6 +237,17 @@ try
     });
 
     var app = builder.Build();
+
+    if (app.Environment.IsDevelopment())
+    {
+        using var scope = app.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<SAED_PortalEmpleado.Infrastructure.Persistence.ApplicationDbContext>();
+
+        if (dbContext.Database.IsSqlite())
+        {
+            dbContext.Database.Migrate();
+        }
+    }
 
     // Add global exception handler (should be first in pipeline)
     app.UseGlobalExceptionHandler();
