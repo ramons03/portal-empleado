@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using SAED_PortalEmpleado.Api.Services;
 using SAED_PortalEmpleado.Application.Common.Interfaces;
 using SAED_PortalEmpleado.Domain.Entities;
 using SAED_PortalEmpleado.Infrastructure.Persistence;
@@ -16,17 +17,23 @@ public class RecibosController : ControllerBase
     private readonly ICurrentUserService _currentUserService;
     private readonly IDateTimeProvider _dateTimeProvider;
     private readonly IConfiguration _configuration;
+    private readonly IRecibosJsonService _recibosJsonService;
+    private readonly IReciboPdfService _reciboPdfService;
 
     public RecibosController(
         ApplicationDbContext context,
         ICurrentUserService currentUserService,
         IDateTimeProvider dateTimeProvider,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        IRecibosJsonService recibosJsonService,
+        IReciboPdfService reciboPdfService)
     {
         _context = context;
         _currentUserService = currentUserService;
         _dateTimeProvider = dateTimeProvider;
         _configuration = configuration;
+        _recibosJsonService = recibosJsonService;
+        _reciboPdfService = reciboPdfService;
     }
 
     /// <summary>
@@ -52,14 +59,67 @@ public class RecibosController : ControllerBase
             return BadRequest(new { message = "CUIL no configurado para el usuario." });
         }
 
-        // TODO: Integrate with payroll system using employee.Cuil
-        var items = Array.Empty<ReciboItem>();
+        ReciboItem[] items;
         if (ShouldUseMockRecibos())
         {
             items = BuildMockRecibos();
         }
+        else
+        {
+            var recibos = await _recibosJsonService.GetRecibosForCuilAsync(employee.Cuil, HttpContext.RequestAborted);
+            items = recibos
+                .Select(r => new ReciboItem(
+                    r.Id,
+                    r.Periodo,
+                    r.Importe,
+                    r.Moneda,
+                    r.Estado,
+                    r.FechaEmision,
+                    $"/api/recibos/{Uri.EscapeDataString(r.Id)}/pdf"))
+                .ToArray();
+        }
+
         var response = new RecibosResponse(employee.Cuil, items);
         return Ok(response);
+    }
+
+    /// <summary>
+    /// Returns one receipt as PDF for the current user.
+    /// </summary>
+    [HttpGet("{reciboId}/pdf")]
+    public async Task<IActionResult> GetReciboPdf(string reciboId)
+    {
+        var googleSub = _currentUserService.GoogleSub;
+        if (string.IsNullOrWhiteSpace(googleSub))
+        {
+            return Unauthorized();
+        }
+
+        var employee = await _context.Employees.SingleOrDefaultAsync(e => e.GoogleSub == googleSub);
+        if (employee == null)
+        {
+            return NotFound("Employee not found");
+        }
+
+        if (string.IsNullOrWhiteSpace(employee.Cuil))
+        {
+            return BadRequest(new { message = "CUIL no configurado para el usuario." });
+        }
+
+        if (ShouldUseMockRecibos())
+        {
+            return NotFound(new { message = "PDF no disponible cuando Recibos:MockData=true." });
+        }
+
+        var recibo = await _recibosJsonService.GetReciboByIdForCuilAsync(employee.Cuil, reciboId, HttpContext.RequestAborted);
+        if (recibo is null)
+        {
+            return NotFound(new { message = "Recibo no encontrado o fuera del rango permitido (12 meses)." });
+        }
+
+        var pdfBytes = await _reciboPdfService.BuildPdfAsync(recibo, HttpContext.RequestAborted);
+        var fileName = $"recibo-{recibo.Id}.pdf";
+        return File(pdfBytes, "application/pdf", fileName);
     }
 
     /// <summary>
@@ -129,9 +189,9 @@ public class RecibosController : ControllerBase
         var now = _dateTimeProvider.UtcNow;
         return new[]
         {
-            new ReciboItem("R-2026-01", "Enero 2026", 182_450.75m, "ARS", "Emitido", now.AddDays(-45)),
-            new ReciboItem("R-2025-12", "Diciembre 2025", 176_900.10m, "ARS", "Emitido", now.AddDays(-75)),
-            new ReciboItem("R-2025-11", "Noviembre 2025", 171_320.40m, "ARS", "Emitido", now.AddDays(-105))
+            new ReciboItem("R-2026-01", "Enero 2026", 182_450.75m, "ARS", "Emitido", now.AddDays(-45), null),
+            new ReciboItem("R-2025-12", "Diciembre 2025", 176_900.10m, "ARS", "Emitido", now.AddDays(-75), null),
+            new ReciboItem("R-2025-11", "Noviembre 2025", 171_320.40m, "ARS", "Emitido", now.AddDays(-105), null)
         };
     }
 }
@@ -144,7 +204,8 @@ public record ReciboItem(
     decimal Importe,
     string Moneda,
     string Estado,
-    DateTime FechaEmision
+    DateTime FechaEmision,
+    string? PdfUrl
 );
 
 public record RecibosViewRequest(string? Action, string? ReciboId);

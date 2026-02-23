@@ -5,6 +5,7 @@ export type ReciboItem = {
   moneda: string;
   estado: string;
   fechaEmision: string;
+  pdfUrl?: string | null;
 };
 
 export type RecibosResponse = {
@@ -13,6 +14,10 @@ export type RecibosResponse = {
 };
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api';
+
+export function getReciboPdfUrl(reciboId: string): string {
+  return `${API_BASE_URL}/recibos/${encodeURIComponent(reciboId)}/pdf`;
+}
 
 export async function getRecibos(): Promise<RecibosResponse> {
   const response = await fetch(`${API_BASE_URL}/recibos`, {

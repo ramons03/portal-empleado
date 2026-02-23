@@ -48,6 +48,8 @@ try
     // Directory API settings (Google Workspace)
     builder.Services.Configure<DirectorySettings>(builder.Configuration.GetSection("Directory"));
     builder.Services.AddSingleton<IGoogleDirectoryCuilService, GoogleDirectoryCuilService>();
+    builder.Services.AddSingleton<IRecibosJsonService, RecibosJsonService>();
+    builder.Services.AddSingleton<IReciboPdfService, ReciboPdfService>();
     
     // Add Response Caching
     builder.Services.AddResponseCaching();

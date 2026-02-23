@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getRecibos, logRecibosView, type ReciboItem } from '../services/recibos';
+import { getReciboPdfUrl, getRecibos, logRecibosView, type ReciboItem } from '../services/recibos';
 import { logger } from '../services/logger';
 import type { FeatureFlags } from '../config/features';
 import './Recibos.css';
@@ -33,9 +33,14 @@ export default function Recibos({ features }: RecibosProps) {
     load();
   }, []);
 
-  const handleView = async (reciboId: string) => {
+  const handleView = async (recibo: ReciboItem) => {
     try {
-      await logRecibosView('open', reciboId);
+      await logRecibosView('open', recibo.id);
+      const pdfUrl = recibo.pdfUrl ?? getReciboPdfUrl(recibo.id);
+      const popup = window.open(pdfUrl, '_blank', 'noopener,noreferrer');
+      if (!popup) {
+        window.location.href = pdfUrl;
+      }
     } catch (err) {
       logger.captureError(err, 'Recibos.handleView');
     }
@@ -80,8 +85,8 @@ export default function Recibos({ features }: RecibosProps) {
                     <p>Estado: {recibo.estado}</p>
                     <p>Fecha emisión: {new Date(recibo.fechaEmision).toLocaleDateString('es-AR')}</p>
                   </div>
-                  <button className="recibo-button" onClick={() => handleView(recibo.id)}>
-                    Ver
+                  <button className="recibo-button" onClick={() => handleView(recibo)}>
+                    Ver PDF
                   </button>
                 </div>
               ))}

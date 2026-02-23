@@ -10,8 +10,10 @@ services:
       ASPNETCORE_URLS: ${ASPNETCORE_URLS:-http://0.0.0.0:5011}
       Authentication__DevLogin__Enabled: ${Authentication__DevLogin__Enabled:-false}
       Directory__ServiceAccountJsonPath: ${Directory__ServiceAccountJsonPath:-/app/secrets/saed-rrhh-sa.json}
+      Recibos__DataDirectory: ${Recibos__DataDirectory:-/app/data}
     volumes:
       - api-data:/app/App_Data
+      - ./data:/app/data:ro
       - ${Directory__ServiceAccountHostPath:-./secrets/saed-rrhh-sa.json}:/app/secrets/saed-rrhh-sa.json:ro
     ports:
       - "5011:5011"

@@ -11,6 +11,7 @@ services:
       DatabaseProvider: Sqlite
       ConnectionStrings__DefaultConnection: Data Source=/workspace/SAED-PortalEmpleado.Api/App_Data/portal-empleado-dev.db
       SecuritySettings__Cookie__Secure: "false"
+      Recibos__DataDirectory: /workspace/data
     volumes:
       - ./:/workspace
       - api-data:/workspace/SAED-PortalEmpleado.Api/App_Data
