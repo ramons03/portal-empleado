@@ -19,7 +19,7 @@ services:
       context: .
       dockerfile: frontend/portal-empleado/Dockerfile
     ports:
-      - "8080:80"
+      - "5173:80"
     depends_on:
       - api
 
