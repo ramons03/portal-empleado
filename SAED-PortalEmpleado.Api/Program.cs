@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
@@ -44,6 +45,14 @@ try
     // Add Application and Infrastructure layers
     builder.Services.AddApplication();
     builder.Services.AddInfrastructure(builder.Configuration);
+
+    // Persist DataProtection keys to avoid invalidating cookies/antiforgery tokens on container restarts.
+    var dataProtectionKeysPath = builder.Configuration["DataProtection:KeysPath"]
+        ?? Path.Combine(builder.Environment.ContentRootPath, "App_Data", "DataProtection-Keys");
+    Directory.CreateDirectory(dataProtectionKeysPath);
+    builder.Services.AddDataProtection()
+        .SetApplicationName("SAED-PortalEmpleado")
+        .PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeysPath));
 
     // Directory API settings (Google Workspace)
     builder.Services.Configure<DirectorySettings>(builder.Configuration.GetSection("Directory"));
