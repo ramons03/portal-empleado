@@ -3,16 +3,13 @@ services:
     build:
       context: .
       dockerfile: SAED-PortalEmpleado.Api/Dockerfile
+    env_file:
+      - ./.env
     environment:
-      ASPNETCORE_ENVIRONMENT: Production
-      ASPNETCORE_URLS: http://0.0.0.0:5011
-      Authentication__DevLogin__Enabled: "false"
-      Authentication__Google__ClientId: ${Authentication__Google__ClientId}
-      Authentication__Google__ClientSecret: ${Authentication__Google__ClientSecret}
-      Authentication__Google__ValidAudiences__0: ${Authentication__Google__ValidAudiences__0}
-      Authentication__Google__ValidIssuers__0: ${Authentication__Google__ValidIssuers__0:-https://accounts.google.com}
-      AllowedHosts: ${AllowedHosts:-mi.saed.digital;localhost;127.0.0.1;api}
-      Directory__ServiceAccountJsonPath: /app/secrets/saed-rrhh-sa.json
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
+      ASPNETCORE_URLS: ${ASPNETCORE_URLS:-http://0.0.0.0:5011}
+      Authentication__DevLogin__Enabled: ${Authentication__DevLogin__Enabled:-false}
+      Directory__ServiceAccountJsonPath: ${Directory__ServiceAccountJsonPath:-/app/secrets/saed-rrhh-sa.json}
     volumes:
       - api-data:/app/App_Data
       - ./secrets:/app/secrets:ro
@@ -23,6 +20,8 @@ services:
     build:
       context: .
       dockerfile: frontend/portal-empleado/Dockerfile
+    env_file:
+      - ./.env
     environment:
       API_UPSTREAM: ${API_UPSTREAM:-https://api.mi.saed.digital}
     ports:

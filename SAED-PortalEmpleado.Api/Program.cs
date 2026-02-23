@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.Google;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using SAED_PortalEmpleado.Api.Endpoints;
@@ -71,6 +72,18 @@ try
                   .AllowAnyMethod()
                   .AllowCredentials(); // Required for cookies
         });
+    });
+
+    // Trust reverse-proxy forwarded headers (host/scheme/ip) in containerized deployments
+    builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    {
+        options.ForwardedHeaders =
+            ForwardedHeaders.XForwardedFor |
+            ForwardedHeaders.XForwardedProto |
+            ForwardedHeaders.XForwardedHost;
+
+        options.KnownNetworks.Clear();
+        options.KnownProxies.Clear();
     });
 
     // Add Antiforgery protection
@@ -264,6 +277,8 @@ try
             c.SwaggerEndpoint("/swagger/v1/swagger.json", "SAED Portal Empleado API v1");
         });
     }
+
+    app.UseForwardedHeaders();
 
     app.UseHttpsRedirection();
     
