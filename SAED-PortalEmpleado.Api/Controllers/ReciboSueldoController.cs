@@ -87,7 +87,7 @@ public class ReciboSueldoController : ControllerBase
     /// Returns one receipt document as PDF for the current user.
     /// </summary>
     [HttpGet("{reciboId}/pdf")]
-    public async Task<IActionResult> GetReciboPdf(string reciboId)
+    public async Task<IActionResult> GetReciboPdf(string reciboId, [FromQuery] bool download = false)
     {
         var googleSub = _currentUserService.GoogleSub;
         if (string.IsNullOrWhiteSpace(googleSub))
@@ -118,8 +118,13 @@ public class ReciboSueldoController : ControllerBase
         }
 
         var pdfBytes = await _reciboPdfService.BuildPdfAsync(recibo, HttpContext.RequestAborted);
-        var fileName = $"recibo-sueldo-{recibo.Id}.pdf";
-        return File(pdfBytes, "application/pdf", fileName);
+        if (download)
+        {
+            var fileName = $"recibo-sueldo-{recibo.Id}.pdf";
+            return File(pdfBytes, "application/pdf", fileName);
+        }
+
+        return File(pdfBytes, "application/pdf");
     }
 
     /// <summary>

@@ -83,21 +83,37 @@
   font-size: 1.1rem;
 }
 
-.recibo-sueldo-list {
+.recibo-sueldo-layout {
   display: grid;
+  grid-template-columns: 340px 1fr;
   gap: 16px;
   margin-top: 20px;
+  min-height: 70vh;
 }
 
-.recibo-card {
+.recibo-sueldo-list {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 16px 20px;
-  border-radius: 12px;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.recibo-list-item {
+  text-align: left;
   border: 1px solid #e5e7eb;
   background: #fafafa;
+  border-radius: 12px;
+  padding: 16px 20px;
+  cursor: pointer;
+  transition: border-color 0.2s, background-color 0.2s;
+}
+
+.recibo-list-item:hover {
+  border-color: #6366f1;
+}
+
+.recibo-list-item.is-active {
+  border-color: #4f46e5;
+  background: #eef2ff;
 }
 
 .recibo-info h3 {
@@ -120,4 +136,49 @@
 
 .recibo-button:hover {
   background: #4338ca;
+}
+
+.recibo-viewer {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #fff;
+  padding: 12px;
+  min-height: 70vh;
+}
+
+.recibo-viewer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.recibo-viewer-header h3 {
+  margin: 0;
+  color: #1f2937;
+  font-size: 1rem;
+}
+
+.recibo-pdf-frame {
+  width: 100%;
+  min-height: calc(70vh - 60px);
+  border: 0;
+  border-radius: 8px;
+  background: #f3f4f6;
+}
+
+@media (max-width: 1024px) {
+  .recibo-sueldo-layout {
+    grid-template-columns: 1fr;
+    min-height: auto;
+  }
+
+  .recibo-viewer {
+    min-height: 65vh;
+  }
+
+  .recibo-pdf-frame {
+    min-height: calc(65vh - 60px);
+  }
 }
