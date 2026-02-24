@@ -18,6 +18,16 @@ type ReciboSueldoProps = {
 
 type HumanReceiptStatus = 'Disponible' | 'Firmado' | 'Pendiente de firma';
 
+type PeriodGroup = {
+  key: string;
+  year: number;
+  month: number;
+  monthLabel: string;
+  periodLabel: string;
+  order: number;
+  items: ReciboItem[];
+};
+
 export default function ReciboSueldo({ features }: ReciboSueldoProps) {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -27,6 +37,8 @@ export default function ReciboSueldo({ features }: ReciboSueldoProps) {
   const [detailById, setDetailById] = useState<Record<string, ReciboDetalleResponse>>({});
   const [detailLoadingId, setDetailLoadingId] = useState<string | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [selectedYear, setSelectedYear] = useState<number | null>(null);
+  const [selectedMonthKey, setSelectedMonthKey] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -47,11 +59,105 @@ export default function ReciboSueldo({ features }: ReciboSueldoProps) {
 
   const sortedItems = useMemo(() => {
     return [...items].sort((a, b) => {
-      const dateA = new Date(a.fechaEmision).getTime();
-      const dateB = new Date(b.fechaEmision).getTime();
-      return dateB - dateA;
+      const orderA = toOrderTimestamp(a);
+      const orderB = toOrderTimestamp(b);
+      return orderB - orderA;
     });
   }, [items]);
+
+  const periodGroups = useMemo(() => {
+    const groups = new Map<string, PeriodGroup>();
+
+    for (const item of sortedItems) {
+      const metadata = buildPeriodMetadata(item);
+      const current = groups.get(metadata.key);
+      if (!current) {
+        groups.set(metadata.key, {
+          ...metadata,
+          items: [item],
+        });
+        continue;
+      }
+
+      current.items.push(item);
+      current.order = Math.max(current.order, metadata.order);
+    }
+
+    return Array.from(groups.values()).sort((a, b) => {
+      if (b.year !== a.year) {
+        return b.year - a.year;
+      }
+
+      if (b.month !== a.month) {
+        return b.month - a.month;
+      }
+
+      return b.order - a.order;
+    });
+  }, [sortedItems]);
+
+  const availableYears = useMemo(() => {
+    return Array.from(new Set(periodGroups.map((group) => group.year))).sort((a, b) => b - a);
+  }, [periodGroups]);
+
+  const monthsForSelectedYear = useMemo(() => {
+    if (selectedYear === null) {
+      return [];
+    }
+
+    return periodGroups.filter((group) => group.year === selectedYear);
+  }, [periodGroups, selectedYear]);
+
+  const selectedGroup = useMemo(() => {
+    if (selectedMonthKey === null) {
+      return null;
+    }
+
+    return monthsForSelectedYear.find((group) => group.key === selectedMonthKey) ?? null;
+  }, [monthsForSelectedYear, selectedMonthKey]);
+
+  const visibleItems = selectedGroup?.items ?? [];
+
+  useEffect(() => {
+    if (availableYears.length === 0) {
+      setSelectedYear(null);
+      return;
+    }
+
+    setSelectedYear((current) => {
+      if (current !== null && availableYears.includes(current)) {
+        return current;
+      }
+
+      return availableYears[0];
+    });
+  }, [availableYears]);
+
+  useEffect(() => {
+    if (monthsForSelectedYear.length === 0) {
+      setSelectedMonthKey(null);
+      return;
+    }
+
+    setSelectedMonthKey((current) => {
+      if (current !== null && monthsForSelectedYear.some((group) => group.key === current)) {
+        return current;
+      }
+
+      return monthsForSelectedYear[0].key;
+    });
+  }, [monthsForSelectedYear]);
+
+  useEffect(() => {
+    if (!expandedId) {
+      return;
+    }
+
+    if (!visibleItems.some((item) => item.id === expandedId)) {
+      setExpandedId(null);
+      setDetailError(null);
+    }
+  }, [expandedId, visibleItems]);
 
   const openReceipt = async (recibo: ReciboItem, action: 'download' | 'sign') => {
     try {
@@ -129,150 +235,206 @@ export default function ReciboSueldo({ features }: ReciboSueldoProps) {
             <p className="state-message is-error">{error}</p>
           )}
 
-          {!loading && !error && sortedItems.length === 0 && (
+          {!loading && !error && periodGroups.length === 0 && (
             <p className="state-message">No hay recibos disponibles.</p>
           )}
 
-          {!loading && !error && sortedItems.length > 0 && (
-            <div className="receipt-list" role="list">
-              {sortedItems.map((recibo) => {
-                const status = toHumanStatus(recibo.estado);
-                const canSign = status === 'Pendiente de firma';
-                const detail = detailById[recibo.id];
-                const isExpanded = expandedId === recibo.id;
-                const isDetailLoading = detailLoadingId === recibo.id;
+          {!loading && !error && periodGroups.length > 0 && (
+            <div className="receipt-layout">
+              <aside className="receipt-period-nav" aria-label="Navegación por período">
+                <section className="period-nav-section">
+                  <h3 className="period-nav-title">Año</h3>
+                  <div className="year-list" role="tablist" aria-label="Años disponibles">
+                    {availableYears.map((year) => (
+                      <button
+                        key={year}
+                        type="button"
+                        role="tab"
+                        aria-selected={selectedYear === year}
+                        className={`year-button ${selectedYear === year ? 'is-active' : ''}`}
+                        onClick={() => setSelectedYear(year)}
+                      >
+                        {year}
+                      </button>
+                    ))}
+                  </div>
+                </section>
 
-                return (
-                  <article className="receipt-card" role="listitem" key={recibo.id}>
-                    <h3 className="receipt-company">{recibo.establecimiento ?? 'Establecimiento'}</h3>
-                    <p className="receipt-role">{recibo.cargo ?? 'Cargo no informado'}</p>
-                    <p className="receipt-detail">
-                      <span className="receipt-label">Periodo:</span> {getPeriodLabel(recibo)}
+                <section className="period-nav-section">
+                  <h3 className="period-nav-title">Mes</h3>
+                  <div className="month-list" role="tablist" aria-label="Meses disponibles">
+                    {monthsForSelectedYear.map((group) => (
+                      <button
+                        key={group.key}
+                        type="button"
+                        role="tab"
+                        aria-selected={selectedMonthKey === group.key}
+                        className={`month-button ${selectedMonthKey === group.key ? 'is-active' : ''}`}
+                        onClick={() => setSelectedMonthKey(group.key)}
+                      >
+                        <span className="month-button-label">{group.monthLabel}</span>
+                        <span className="month-button-count">{group.items.length}</span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              </aside>
+
+              <section className="receipt-content" aria-label="Recibos del período seleccionado">
+                {selectedGroup && (
+                  <header className="receipt-content-header">
+                    <h3 className="receipt-selected-period">{selectedGroup.periodLabel}</h3>
+                    <p className="receipt-selected-subtitle">
+                      {selectedGroup.items.length} recibo{selectedGroup.items.length === 1 ? '' : 's'} por cargo
                     </p>
-                    <p className={`receipt-status ${statusToClassName(status)}`}>
-                      Estado: {status}
-                    </p>
-                    <p className="receipt-liquid-label">Líquido a cobrar</p>
-                    <p className="receipt-liquid-value">{formatMoney(recibo.importe, recibo.moneda)}</p>
+                  </header>
+                )}
 
-                    <div className="receipt-actions">
-                      <button
-                        type="button"
-                        className="receipt-action primary"
-                        onClick={() => handleToggleDetail(recibo)}
-                      >
-                        {isExpanded ? 'Ocultar detalle' : 'Ver detalle'}
-                      </button>
+                {visibleItems.length === 0 && (
+                  <p className="state-message">No hay recibos disponibles para este período.</p>
+                )}
 
-                      <button
-                        type="button"
-                        className="receipt-action secondary"
-                        onClick={() => openReceipt(recibo, 'download')}
-                      >
-                        Descargar PDF
-                      </button>
+                {visibleItems.length > 0 && (
+                  <div className="receipt-list" role="list">
+                    {visibleItems.map((recibo) => {
+                      const status = toHumanStatus(recibo.estado);
+                      const canSign = status === 'Pendiente de firma';
+                      const detail = detailById[recibo.id];
+                      const isExpanded = expandedId === recibo.id;
+                      const isDetailLoading = detailLoadingId === recibo.id;
 
-                      <button
-                        type="button"
-                        className="receipt-action accent"
-                        onClick={() => openReceipt(recibo, 'sign')}
-                        disabled={!canSign}
-                        title={canSign ? 'Firmar recibo' : 'Este recibo no requiere firma'}
-                      >
-                        Firmar
-                      </button>
-                    </div>
+                      return (
+                        <article className="receipt-card" role="listitem" key={recibo.id}>
+                          <h4 className="receipt-company">{recibo.establecimiento ?? 'Establecimiento'}</h4>
+                          <p className="receipt-role">{recibo.cargo ?? 'Cargo no informado'}</p>
+                          <p className="receipt-card-meta">Emitido: {formatDate(recibo.fechaEmision)}</p>
+                          <p className={`receipt-status ${statusToClassName(status)}`}>
+                            Estado: {status}
+                          </p>
+                          <p className="receipt-liquid-label">Líquido a cobrar</p>
+                          <p className="receipt-liquid-value">{formatMoney(recibo.importe, recibo.moneda)}</p>
 
-                    {isExpanded && (
-                      <section className="receipt-detail-panel">
-                        {isDetailLoading && (
-                          <p className="state-message">Cargando detalle del recibo...</p>
-                        )}
+                          <div className="receipt-actions">
+                            <button
+                              type="button"
+                              className="receipt-action primary"
+                              onClick={() => handleToggleDetail(recibo)}
+                            >
+                              {isExpanded ? 'Ocultar detalle' : 'Ver detalle'}
+                            </button>
 
-                        {!isDetailLoading && detailError && (
-                          <p className="state-message is-error">{detailError}</p>
-                        )}
+                            <button
+                              type="button"
+                              className="receipt-action secondary"
+                              onClick={() => openReceipt(recibo, 'download')}
+                            >
+                              Descargar PDF
+                            </button>
 
-                        {!isDetailLoading && detail && (
-                          <>
-                            <div className="receipt-meta-grid">
-                              <p><strong>Periodo:</strong> {detail.periodo}</p>
-                              <p><strong>Fecha de emisión:</strong> {formatDate(detail.fechaEmision)}</p>
-                              <p><strong>Fecha de ingreso:</strong> {formatMaybeDate(detail.fechaIngreso)}</p>
-                              <p><strong>Días trabajados:</strong> {detail.diasTrabajados ?? '-'}</p>
-                            </div>
+                            <button
+                              type="button"
+                              className="receipt-action accent"
+                              onClick={() => openReceipt(recibo, 'sign')}
+                              disabled={!canSign}
+                              title={canSign ? 'Firmar recibo' : 'Este recibo no requiere firma'}
+                            >
+                              Firmar
+                            </button>
+                          </div>
 
-                            <div className="receipt-tables">
-                              <div>
-                                <h4>Haberes</h4>
-                                <table>
-                                  <thead>
-                                    <tr>
-                                      <th>Código</th>
-                                      <th>Concepto</th>
-                                      <th className="amount-col">Monto</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {detail.haberes.length === 0 && (
-                                      <tr>
-                                        <td colSpan={3} className="empty-row">Sin haberes cargados.</td>
-                                      </tr>
-                                    )}
-                                    {detail.haberes.map((item, index) => (
-                                      <tr key={`${detail.id}-hab-${item.codigo}-${index}`}>
-                                        <td>{item.codigo}</td>
-                                        <td>{item.concepto}</td>
-                                        <td className="amount-col">{formatMoney(item.monto, 'ARS')}</td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-
-                              <div>
-                                <h4>Descuentos</h4>
-                                <table>
-                                  <thead>
-                                    <tr>
-                                      <th>Código</th>
-                                      <th>Concepto</th>
-                                      <th className="amount-col">Monto</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {detail.descuentos.length === 0 && (
-                                      <tr>
-                                        <td colSpan={3} className="empty-row">Sin descuentos cargados.</td>
-                                      </tr>
-                                    )}
-                                    {detail.descuentos.map((item, index) => (
-                                      <tr key={`${detail.id}-des-${item.codigo}-${index}`}>
-                                        <td>{item.codigo}</td>
-                                        <td>{item.concepto}</td>
-                                        <td className="amount-col">{formatMoney(item.monto, 'ARS')}</td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                            </div>
-
-                            <div className="receipt-totals">
-                              <p><strong>Bruto:</strong> {formatMoney(detail.bruto, 'ARS')}</p>
-                              <p><strong>Total descuentos:</strong> {formatMoney(detail.totalDescuentos, 'ARS')}</p>
-                              <p className="liquido-total"><strong>Líquido:</strong> {formatMoney(detail.liquido, 'ARS')}</p>
-                              {detail.liquidoPalabras && (
-                                <p className="liquido-palabras"><strong>En palabras:</strong> {detail.liquidoPalabras}</p>
+                          {isExpanded && (
+                            <section className="receipt-detail-panel">
+                              {isDetailLoading && (
+                                <p className="state-message">Cargando detalle del recibo...</p>
                               )}
-                            </div>
-                          </>
-                        )}
-                      </section>
-                    )}
-                  </article>
-                );
-              })}
+
+                              {!isDetailLoading && detailError && (
+                                <p className="state-message is-error">{detailError}</p>
+                              )}
+
+                              {!isDetailLoading && detail && (
+                                <>
+                                  <div className="receipt-meta-grid">
+                                    <p><strong>Periodo:</strong> {detail.periodo}</p>
+                                    <p><strong>Fecha de emisión:</strong> {formatDate(detail.fechaEmision)}</p>
+                                    <p><strong>Fecha de ingreso:</strong> {formatMaybeDate(detail.fechaIngreso)}</p>
+                                    <p><strong>Días trabajados:</strong> {detail.diasTrabajados ?? '-'}</p>
+                                  </div>
+
+                                  <div className="receipt-tables">
+                                    <div>
+                                      <h4>Haberes</h4>
+                                      <table>
+                                        <thead>
+                                          <tr>
+                                            <th>Código</th>
+                                            <th>Concepto</th>
+                                            <th className="amount-col">Monto</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {detail.haberes.length === 0 && (
+                                            <tr>
+                                              <td colSpan={3} className="empty-row">Sin haberes cargados.</td>
+                                            </tr>
+                                          )}
+                                          {detail.haberes.map((item, index) => (
+                                            <tr key={`${detail.id}-hab-${item.codigo}-${index}`}>
+                                              <td>{item.codigo}</td>
+                                              <td>{item.concepto}</td>
+                                              <td className="amount-col">{formatMoney(item.monto, 'ARS')}</td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+
+                                    <div>
+                                      <h4>Descuentos</h4>
+                                      <table>
+                                        <thead>
+                                          <tr>
+                                            <th>Código</th>
+                                            <th>Concepto</th>
+                                            <th className="amount-col">Monto</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {detail.descuentos.length === 0 && (
+                                            <tr>
+                                              <td colSpan={3} className="empty-row">Sin descuentos cargados.</td>
+                                            </tr>
+                                          )}
+                                          {detail.descuentos.map((item, index) => (
+                                            <tr key={`${detail.id}-des-${item.codigo}-${index}`}>
+                                              <td>{item.codigo}</td>
+                                              <td>{item.concepto}</td>
+                                              <td className="amount-col">{formatMoney(item.monto, 'ARS')}</td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  </div>
+
+                                  <div className="receipt-totals">
+                                    <p><strong>Bruto:</strong> {formatMoney(detail.bruto, 'ARS')}</p>
+                                    <p><strong>Total descuentos:</strong> {formatMoney(detail.totalDescuentos, 'ARS')}</p>
+                                    <p className="liquido-total"><strong>Líquido:</strong> {formatMoney(detail.liquido, 'ARS')}</p>
+                                    {detail.liquidoPalabras && (
+                                      <p className="liquido-palabras"><strong>En palabras:</strong> {detail.liquidoPalabras}</p>
+                                    )}
+                                  </div>
+                                </>
+                              )}
+                            </section>
+                          )}
+                        </article>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
             </div>
           )}
         </section>
@@ -281,18 +443,119 @@ export default function ReciboSueldo({ features }: ReciboSueldoProps) {
   );
 }
 
-function getPeriodLabel(recibo: ReciboItem): string {
-  if (typeof recibo.periodo === 'string' && recibo.periodo.trim().length > 0) {
-    return recibo.periodo;
+function buildPeriodMetadata(recibo: ReciboItem): Omit<PeriodGroup, 'items'> {
+  const period = parsePeriod(recibo);
+  const year = period?.year ?? 1970;
+  const month = period?.month ?? 1;
+  const monthLabel = monthToLabel(month);
+
+  return {
+    key: `${year}-${String(month).padStart(2, '0')}`,
+    year,
+    month,
+    monthLabel,
+    periodLabel: `${monthLabel} ${year}`,
+    order: toOrderTimestamp(recibo, year, month),
+  };
+}
+
+function parsePeriod(recibo: ReciboItem): { year: number; month: number } | null {
+  const fromDate = parseDateWithFallback(recibo.fechaEmision);
+  if (fromDate !== null) {
+    return {
+      year: fromDate.getFullYear(),
+      month: fromDate.getMonth() + 1,
+    };
   }
 
-  const date = new Date(recibo.fechaEmision);
-  return date.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+  const rawPeriod = (recibo.periodo ?? '').trim();
+  if (rawPeriod.length === 0) {
+    return null;
+  }
+
+  const numericPeriodMatch = rawPeriod.match(/^(\d{1,2})[-/](\d{4})$/);
+  if (numericPeriodMatch) {
+    const month = Number.parseInt(numericPeriodMatch[1], 10);
+    const year = Number.parseInt(numericPeriodMatch[2], 10);
+    if (month >= 1 && month <= 12) {
+      return { year, month };
+    }
+  }
+
+  const reverseNumericPeriodMatch = rawPeriod.match(/^(\d{4})[-/](\d{1,2})$/);
+  if (reverseNumericPeriodMatch) {
+    const year = Number.parseInt(reverseNumericPeriodMatch[1], 10);
+    const month = Number.parseInt(reverseNumericPeriodMatch[2], 10);
+    if (month >= 1 && month <= 12) {
+      return { year, month };
+    }
+  }
+
+  const normalizedPeriod = normalizeText(rawPeriod);
+  const yearMatch = normalizedPeriod.match(/(19|20)\d{2}/);
+  if (!yearMatch) {
+    return null;
+  }
+
+  const year = Number.parseInt(yearMatch[0], 10);
+  const month = Object.entries(SPANISH_MONTHS).find(([token]) => normalizedPeriod.includes(token))?.[1];
+
+  if (!month) {
+    return null;
+  }
+
+  return { year, month };
+}
+
+function toOrderTimestamp(recibo: ReciboItem, fallbackYear?: number, fallbackMonth?: number): number {
+  const parsed = parseDateWithFallback(recibo.fechaEmision);
+  if (parsed !== null) {
+    return parsed.getTime();
+  }
+
+  const year = fallbackYear ?? 1970;
+  const month = fallbackMonth ?? 1;
+  return Date.UTC(year, month - 1, 1);
+}
+
+function parseDateWithFallback(value: string): Date | null {
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed;
+  }
+
+  const slashDateMatch = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (!slashDateMatch) {
+    return null;
+  }
+
+  const day = Number.parseInt(slashDateMatch[1], 10);
+  const month = Number.parseInt(slashDateMatch[2], 10);
+  const year = Number.parseInt(slashDateMatch[3], 10);
+  const fallbackDate = new Date(year, month - 1, day);
+
+  if (Number.isNaN(fallbackDate.getTime())) {
+    return null;
+  }
+
+  return fallbackDate;
+}
+
+function monthToLabel(month: number): string {
+  return MONTH_LABELS[month - 1] ?? 'Mes';
+}
+
+function normalizeText(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
 }
 
 function formatDate(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
+  const date = parseDateWithFallback(value);
+  if (date === null) {
     return '-';
   }
 
@@ -304,8 +567,8 @@ function formatMaybeDate(value: string | null | undefined): string {
     return '-';
   }
 
-  const parsed = new Date(value);
-  if (!Number.isNaN(parsed.getTime())) {
+  const parsed = parseDateWithFallback(value);
+  if (parsed !== null) {
     return parsed.toLocaleDateString('es-AR');
   }
 
@@ -365,3 +628,46 @@ function toFriendlyLoadMessage(err: unknown): string {
 
   return 'No pudimos cargar tus recibos en este momento. Intentá nuevamente en unos minutos.';
 }
+
+const MONTH_LABELS = [
+  'Enero',
+  'Febrero',
+  'Marzo',
+  'Abril',
+  'Mayo',
+  'Junio',
+  'Julio',
+  'Agosto',
+  'Septiembre',
+  'Octubre',
+  'Noviembre',
+  'Diciembre',
+] as const;
+
+const SPANISH_MONTHS: Record<string, number> = {
+  enero: 1,
+  ene: 1,
+  febrero: 2,
+  feb: 2,
+  marzo: 3,
+  mar: 3,
+  abril: 4,
+  abr: 4,
+  mayo: 5,
+  jun: 6,
+  junio: 6,
+  jul: 7,
+  julio: 7,
+  agosto: 8,
+  ago: 8,
+  septiembre: 9,
+  setiembre: 9,
+  sep: 9,
+  set: 9,
+  octubre: 10,
+  oct: 10,
+  noviembre: 11,
+  nov: 11,
+  diciembre: 12,
+  dic: 12,
+};

@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Collections.Concurrent;
 using Amazon;
 using Amazon.S3;
 using Amazon.S3.Model;
@@ -67,18 +68,29 @@ public sealed class ReciboSueldoJsonService : IReciboSueldoJsonService
     private readonly IConfiguration _configuration;
     private readonly IDateTimeProvider _dateTimeProvider;
     private readonly IHostEnvironment _hostEnvironment;
+    private readonly IReceiptCatalogCache _receiptCatalogCache;
+    private readonly IReceiptSourceAws _receiptSourceAws;
+    private readonly IReceiptPeriodLock _receiptPeriodLock;
     private readonly ILogger<ReciboSueldoJsonService> _logger;
     private readonly ReciboSueldoS3Settings _s3Settings;
+    private readonly ConcurrentDictionary<string, DateTime> _notFoundPeriods = new(StringComparer.Ordinal);
+    private static readonly TimeSpan NotFoundPeriodTtl = TimeSpan.FromHours(12);
 
     public ReciboSueldoJsonService(
         IConfiguration configuration,
         IDateTimeProvider dateTimeProvider,
         IHostEnvironment hostEnvironment,
+        IReceiptCatalogCache receiptCatalogCache,
+        IReceiptSourceAws receiptSourceAws,
+        IReceiptPeriodLock receiptPeriodLock,
         ILogger<ReciboSueldoJsonService> logger)
     {
         _configuration = configuration;
         _dateTimeProvider = dateTimeProvider;
         _hostEnvironment = hostEnvironment;
+        _receiptCatalogCache = receiptCatalogCache;
+        _receiptSourceAws = receiptSourceAws;
+        _receiptPeriodLock = receiptPeriodLock;
         _logger = logger;
 
         _s3Settings = new ReciboSueldoS3Settings(
@@ -112,7 +124,7 @@ public sealed class ReciboSueldoJsonService : IReciboSueldoJsonService
 
         var now = _dateTimeProvider.UtcNow;
         var reciboSueldoItems = _s3Settings.Enabled
-            ? await GetReciboSueldoFromS3Async(normalizedCuil, now, cancellationToken)
+            ? await GetReciboSueldoFromCacheOrSourceAsync(normalizedCuil, now, cancellationToken)
             : GetReciboSueldoFromLocalDirectory(normalizedCuil, now, cancellationToken);
 
         var deduped = reciboSueldoItems
@@ -122,6 +134,114 @@ public sealed class ReciboSueldoJsonService : IReciboSueldoJsonService
             .ToArray();
 
         return deduped;
+    }
+
+    private async Task<IReadOnlyList<ReciboDocument>> GetReciboSueldoFromCacheOrSourceAsync(
+        string normalizedCuil,
+        DateTime nowUtc,
+        CancellationToken cancellationToken)
+    {
+        var monthlyPeriods = BuildAllowedPeriods(nowUtc)
+            .GroupBy(p => (p.PeriodDate.Year, p.PeriodDate.Month))
+            .Select(g => BuildMonthlyPeriod(g.Key.Year, g.Key.Month))
+            .OrderByDescending(p => p.PeriodDate)
+            .ToArray();
+
+        var reciboSueldoItems = new List<ReciboDocument>();
+
+        foreach (var period in monthlyPeriods)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var year = period.PeriodDate.Year;
+            var month = period.PeriodDate.Month;
+            var cacheEntry = await _receiptCatalogCache.GetLatestAsync(normalizedCuil, year, month, cancellationToken);
+
+            if (cacheEntry is null && IsRecentNotFound(normalizedCuil, year, month, nowUtc))
+            {
+                continue;
+            }
+
+            if (cacheEntry is null)
+            {
+                await using var periodLock = await _receiptPeriodLock.AcquireAsync(normalizedCuil, year, month, cancellationToken);
+                cacheEntry = await _receiptCatalogCache.GetLatestAsync(normalizedCuil, year, month, cancellationToken);
+
+                if (cacheEntry is null)
+                {
+                    var fetch = await _receiptSourceAws.FetchPeriodAsync(
+                        new ReceiptSourceFetchRequest(normalizedCuil, year, month, KnownEtag: null, KnownVersionId: null),
+                        cancellationToken);
+
+                    if (fetch.Status == ReceiptSourceFetchStatus.Downloaded && !string.IsNullOrWhiteSpace(fetch.PayloadJson))
+                    {
+                        cacheEntry = await _receiptCatalogCache.SaveNewVersionAsync(
+                            new ReceiptCacheWriteRequest(
+                                normalizedCuil,
+                                year,
+                                month,
+                                fetch.DownloadedAtUtc ?? DateTime.UtcNow,
+                                string.IsNullOrWhiteSpace(fetch.SourceKey) ? $"{year:D4}{month:D2}" : fetch.SourceKey,
+                                fetch.SourceEtag,
+                                fetch.SourceVersionId,
+                                fetch.PayloadJson),
+                            cancellationToken);
+
+                        _notFoundPeriods.TryRemove(BuildNotFoundKey(normalizedCuil, year, month), out _);
+                        _logger.LogInformation(
+                            "ReciboSueldo cache populated from AWS. Cuil={Cuil} Period={Year}-{Month}",
+                            normalizedCuil,
+                            year,
+                            month);
+                    }
+                    else if (fetch.Status == ReceiptSourceFetchStatus.NotFound)
+                    {
+                        _notFoundPeriods[BuildNotFoundKey(normalizedCuil, year, month)] = nowUtc;
+                    }
+                }
+            }
+
+            if (cacheEntry is null)
+            {
+                continue;
+            }
+
+            if (TryParseReciboJson(
+                cacheEntry.PayloadJson,
+                sourceId: cacheEntry.SourceKey,
+                sourceLastWriteUtc: cacheEntry.DownloadedAtUtc,
+                normalizedCuil: normalizedCuil,
+                nowUtc: nowUtc,
+                forcedPeriod: period,
+                out var recibos))
+            {
+                reciboSueldoItems.AddRange(recibos);
+            }
+        }
+
+        return reciboSueldoItems;
+    }
+
+    private bool IsRecentNotFound(string cuil, int year, int month, DateTime nowUtc)
+    {
+        var key = BuildNotFoundKey(cuil, year, month);
+        if (!_notFoundPeriods.TryGetValue(key, out var notFoundAtUtc))
+        {
+            return false;
+        }
+
+        if ((nowUtc - notFoundAtUtc) <= NotFoundPeriodTtl)
+        {
+            return true;
+        }
+
+        _notFoundPeriods.TryRemove(key, out _);
+        return false;
+    }
+
+    private static string BuildNotFoundKey(string cuil, int year, int month)
+    {
+        return $"{cuil}:{year:D4}:{month:D2}";
     }
 
     private IReadOnlyList<ReciboDocument> GetReciboSueldoFromLocalDirectory(string normalizedCuil, DateTime nowUtc, CancellationToken cancellationToken)
