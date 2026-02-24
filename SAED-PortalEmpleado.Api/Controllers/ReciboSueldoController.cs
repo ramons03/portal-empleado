@@ -75,7 +75,11 @@ public class ReciboSueldoController : ControllerBase
                     r.Moneda,
                     r.Estado,
                     r.FechaEmision,
-                    $"/api/recibo-sueldo/{Uri.EscapeDataString(r.Id)}/pdf"))
+                    $"/api/recibo-sueldo/{Uri.EscapeDataString(r.Id)}/pdf",
+                    r.Establecimiento,
+                    r.Cargo,
+                    r.FechaIngreso,
+                    r.DiasTrabajados))
                 .ToArray();
         }
 
@@ -125,6 +129,60 @@ public class ReciboSueldoController : ControllerBase
         }
 
         return File(pdfBytes, "application/pdf");
+    }
+
+    /// <summary>
+    /// Returns complete detail for one payroll receipt by cargo.
+    /// </summary>
+    [HttpGet("{reciboId}")]
+    public async Task<IActionResult> GetReciboDetalle(string reciboId)
+    {
+        var googleSub = _currentUserService.GoogleSub;
+        if (string.IsNullOrWhiteSpace(googleSub))
+        {
+            return Unauthorized();
+        }
+
+        var employee = await _context.Employees.SingleOrDefaultAsync(e => e.GoogleSub == googleSub);
+        if (employee == null)
+        {
+            return NotFound("Employee not found");
+        }
+
+        if (string.IsNullOrWhiteSpace(employee.Cuil))
+        {
+            return BadRequest(new { message = "CUIL no configurado para el usuario." });
+        }
+
+        if (ShouldUseMockReciboSueldo())
+        {
+            return NotFound(new { message = "Detalle no disponible cuando ReciboSueldo:MockData=true." });
+        }
+
+        var recibo = await _reciboSueldoJsonService.GetReciboByIdForCuilAsync(employee.Cuil, reciboId, HttpContext.RequestAborted);
+        if (recibo is null || string.IsNullOrWhiteSpace(recibo.SourceJson))
+        {
+            return NotFound(new { message = "Recibo no encontrado." });
+        }
+
+        var (haberes, descuentos) = ParseConceptTables(recibo.SourceJson, recibo.CargoIndex);
+        var response = new ReciboDetalleResponse(
+            recibo.Id,
+            recibo.Establecimiento,
+            recibo.Cargo,
+            recibo.Periodo,
+            recibo.FechaEmision,
+            recibo.FechaIngreso,
+            recibo.DiasTrabajados,
+            recibo.Bruto ?? 0m,
+            recibo.TotalDescuentos ?? 0m,
+            recibo.Importe,
+            recibo.LiquidoPalabras,
+            haberes,
+            descuentos,
+            $"/api/recibo-sueldo/{Uri.EscapeDataString(recibo.Id)}/pdf");
+
+        return Ok(response);
     }
 
     /// <summary>
@@ -194,10 +252,133 @@ public class ReciboSueldoController : ControllerBase
         var now = _dateTimeProvider.UtcNow;
         return new[]
         {
-            new ReciboItem("R-2026-01", "Enero 2026", 182_450.75m, "ARS", "Emitido", now.AddDays(-45), null),
-            new ReciboItem("R-2025-12", "Diciembre 2025", 176_900.10m, "ARS", "Emitido", now.AddDays(-75), null),
-            new ReciboItem("R-2025-11", "Noviembre 2025", 171_320.40m, "ARS", "Emitido", now.AddDays(-105), null)
+            new ReciboItem("R-2026-01-370-1", "Enero 2026", 182_450.75m, "ARS", "Pendiente", now.AddDays(-45), null, "INSTITUTO MARIA A. DE PAZ Y FI", "HORA CATEDRA NIVEL MEDIO", "23/12/2020", 30),
+            new ReciboItem("R-2026-01-SAP-1", "Enero 2026", 210_360.45m, "ARS", "Firmado", now.AddDays(-45), null, "SAED ADMINISTRACION", "ADMINISTRATIVO 2 SOEME", "16/07/2020", 30),
+            new ReciboItem("R-2025-12-370-1", "Diciembre 2025", 176_900.10m, "ARS", "Disponible", now.AddDays(-75), null, "INSTITUTO MARIA A. DE PAZ Y FI", "HORA CATEDRA NIVEL MEDIO", "23/12/2020", 30)
         };
+    }
+
+    private static (IReadOnlyList<ReciboConceptoItem> Haberes, IReadOnlyList<ReciboConceptoItem> Descuentos) ParseConceptTables(string sourceJson, int cargoIndex)
+    {
+        using var document = System.Text.Json.JsonDocument.Parse(sourceJson);
+        var root = document.RootElement;
+        if (!TryGetCargo(root, cargoIndex, out var cargo))
+        {
+            return ([], []);
+        }
+
+        if (!cargo.TryGetProperty("Items", out var items) || items.ValueKind != System.Text.Json.JsonValueKind.Array)
+        {
+            return ([], []);
+        }
+
+        var haberes = new List<ReciboConceptoItem>();
+        var descuentos = new List<ReciboConceptoItem>();
+
+        foreach (var item in items.EnumerateArray())
+        {
+            var codigo = TryGetString(item, "CodigoItem")
+                ?? (item.TryGetProperty("Item", out var nestedItem) ? TryGetString(nestedItem, "CodigoItem") : null)
+                ?? "-";
+            var concepto = TryGetString(item, "DescripcionItem")
+                ?? (item.TryGetProperty("Item", out var nestedItem2) ? TryGetString(nestedItem2, "Descripcion") : null)
+                ?? "Concepto";
+            var monto = TryGetDecimal(item, "TotalMontoItem")
+                ?? TryGetDecimal(item, "MontoItem")
+                ?? 0m;
+            var esDescuento = TryGetBool(item, "EsDescuento")
+                ?? (item.TryGetProperty("Item", out var nestedItem3) ? TryGetBool(nestedItem3, "Descuento") : null)
+                ?? false;
+
+            var conceptItem = new ReciboConceptoItem(codigo, concepto, monto);
+            if (esDescuento)
+            {
+                descuentos.Add(conceptItem);
+            }
+            else
+            {
+                haberes.Add(conceptItem);
+            }
+        }
+
+        return (haberes, descuentos);
+    }
+
+    private static bool TryGetCargo(System.Text.Json.JsonElement root, int cargoIndex, out System.Text.Json.JsonElement cargo)
+    {
+        cargo = default;
+        if (!root.TryGetProperty("Cargos", out var cargos) ||
+            cargos.ValueKind != System.Text.Json.JsonValueKind.Array ||
+            cargos.GetArrayLength() == 0)
+        {
+            return false;
+        }
+
+        var safeIndex = cargoIndex;
+        if (safeIndex < 0 || safeIndex >= cargos.GetArrayLength())
+        {
+            safeIndex = 0;
+        }
+
+        cargo = cargos[safeIndex];
+        return true;
+    }
+
+    private static string? TryGetString(System.Text.Json.JsonElement obj, string propertyName)
+    {
+        if (!obj.TryGetProperty(propertyName, out var element))
+        {
+            return null;
+        }
+
+        return element.ValueKind == System.Text.Json.JsonValueKind.String ? element.GetString() : element.ToString();
+    }
+
+    private static decimal? TryGetDecimal(System.Text.Json.JsonElement obj, string propertyName)
+    {
+        if (!obj.TryGetProperty(propertyName, out var element))
+        {
+            return null;
+        }
+
+        if (element.ValueKind == System.Text.Json.JsonValueKind.Number && element.TryGetDecimal(out var value))
+        {
+            return value;
+        }
+
+        if (element.ValueKind == System.Text.Json.JsonValueKind.String &&
+            decimal.TryParse(element.GetString(), out var parsed))
+        {
+            return parsed;
+        }
+
+        return null;
+    }
+
+    private static bool? TryGetBool(System.Text.Json.JsonElement obj, string propertyName)
+    {
+        if (!obj.TryGetProperty(propertyName, out var element))
+        {
+            return null;
+        }
+
+        if (element.ValueKind == System.Text.Json.JsonValueKind.True)
+        {
+            return true;
+        }
+
+        if (element.ValueKind == System.Text.Json.JsonValueKind.False)
+        {
+            return false;
+        }
+
+        if (element.ValueKind == System.Text.Json.JsonValueKind.String &&
+            bool.TryParse(element.GetString(), out var parsed))
+        {
+            return parsed;
+        }
+
+        return null;
     }
 }
 
@@ -210,7 +391,34 @@ public record ReciboItem(
     string Moneda,
     string Estado,
     DateTime FechaEmision,
-    string? PdfUrl
+    string? PdfUrl,
+    string? Establecimiento,
+    string? Cargo,
+    string? FechaIngreso,
+    int? DiasTrabajados
 );
 
 public record ReciboSueldoViewRequest(string? Action, string? ReciboId);
+
+public record ReciboDetalleResponse(
+    string Id,
+    string Establecimiento,
+    string Cargo,
+    string Periodo,
+    DateTime FechaEmision,
+    string? FechaIngreso,
+    int? DiasTrabajados,
+    decimal Bruto,
+    decimal TotalDescuentos,
+    decimal Liquido,
+    string? LiquidoPalabras,
+    IReadOnlyList<ReciboConceptoItem> Haberes,
+    IReadOnlyList<ReciboConceptoItem> Descuentos,
+    string PdfUrl
+);
+
+public record ReciboConceptoItem(
+    string Codigo,
+    string Concepto,
+    decimal Monto
+);

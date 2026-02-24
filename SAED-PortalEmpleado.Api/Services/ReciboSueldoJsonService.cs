@@ -27,12 +27,19 @@ public sealed record ReciboDocument(
     string Periodo,
     string Cuil,
     string? Nombre,
+    string Establecimiento,
+    string Cargo,
+    string? FechaIngreso,
+    int? DiasTrabajados,
     decimal Importe,
+    decimal? Bruto,
     decimal? TotalHaberes,
     decimal? TotalDescuentos,
+    string? LiquidoPalabras,
     string Moneda,
     string Estado,
     DateTime FechaEmision,
+    int CargoIndex,
     string SourceFile,
     DateTime SourceLastWriteUtc,
     string? SourceJson
@@ -143,9 +150,9 @@ public sealed class ReciboSueldoJsonService : IReciboSueldoJsonService
                 {
                     cancellationToken.ThrowIfCancellationRequested();
 
-                    if (TryParseReciboFile(file, normalizedCuil, nowUtc, forcedPeriod: period, out var recibo) && recibo is not null)
+                    if (TryParseReciboFile(file, normalizedCuil, nowUtc, forcedPeriod: period, out var recibos))
                     {
-                        reciboSueldoItems.Add(recibo);
+                        reciboSueldoItems.AddRange(recibos);
                     }
                 }
             }
@@ -180,7 +187,7 @@ public sealed class ReciboSueldoJsonService : IReciboSueldoJsonService
 
         foreach (var period in periods)
         {
-            var addedForPeriod = false;
+            var foundForPeriod = false;
             LogS3Trace("ReciboSueldo S3 searching period {PeriodId} (token {PeriodToken})", period.Id, period.StorageToken);
 
             foreach (var cuil in cuilFormats)
@@ -215,11 +222,15 @@ public sealed class ReciboSueldoJsonService : IReciboSueldoJsonService
                             normalizedCuil: normalizedCuil,
                             nowUtc: nowUtc,
                             forcedPeriod: period,
-                            out var recibo) && recibo is not null)
+                            out var recibos))
                         {
-                            reciboSueldoItems.Add(recibo);
-                            addedForPeriod = true;
-                            _logger.LogInformation("ReciboSueldo S3 receipt selected for period {PeriodId} from key {Key}", period.Id, key);
+                            reciboSueldoItems.AddRange(recibos);
+                            foundForPeriod = true;
+                            _logger.LogInformation(
+                                "ReciboSueldo S3 receipts selected for period {PeriodId} from key {Key}. Count={Count}",
+                                period.Id,
+                                key,
+                                recibos.Count);
                             break;
                         }
 
@@ -236,13 +247,13 @@ public sealed class ReciboSueldoJsonService : IReciboSueldoJsonService
                     }
                 }
 
-                if (addedForPeriod)
+                if (foundForPeriod)
                 {
                     break;
                 }
             }
 
-            if (addedForPeriod)
+            if (foundForPeriod)
             {
                 continue;
             }
@@ -298,7 +309,12 @@ public sealed class ReciboSueldoJsonService : IReciboSueldoJsonService
             .ToArray();
     }
 
-    private bool TryParseReciboFile(string filePath, string normalizedCuil, DateTime nowUtc, ReciboPeriod? forcedPeriod, out ReciboDocument? recibo)
+    private bool TryParseReciboFile(
+        string filePath,
+        string normalizedCuil,
+        DateTime nowUtc,
+        ReciboPeriod? forcedPeriod,
+        out IReadOnlyList<ReciboDocument> recibos)
     {
         try
         {
@@ -311,12 +327,12 @@ public sealed class ReciboSueldoJsonService : IReciboSueldoJsonService
                 normalizedCuil: normalizedCuil,
                 nowUtc: nowUtc,
                 forcedPeriod: forcedPeriod,
-                out recibo);
+                out recibos);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Skipping invalid recibo file: {FilePath}", filePath);
-            recibo = null;
+            recibos = [];
             return false;
         }
     }
@@ -328,9 +344,9 @@ public sealed class ReciboSueldoJsonService : IReciboSueldoJsonService
         string normalizedCuil,
         DateTime nowUtc,
         ReciboPeriod? forcedPeriod,
-        out ReciboDocument? recibo)
+        out IReadOnlyList<ReciboDocument> recibos)
     {
-        recibo = null;
+        recibos = [];
 
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
@@ -361,32 +377,66 @@ public sealed class ReciboSueldoJsonService : IReciboSueldoJsonService
             return false;
         }
 
-        var totalLiquido = TryGetDecimal(root, "TotalLiquido")
-            ?? TryGetDecimal(root, "TotalItems")
-            ?? TryGetFirstCargoDecimal(root, "Liquido")
-            ?? 0m;
+        if (!root.TryGetProperty("Cargos", out var cargos) ||
+            cargos.ValueKind != JsonValueKind.Array ||
+            cargos.GetArrayLength() == 0)
+        {
+            return false;
+        }
 
-        var totalHaberes = TryGetDecimal(root, "TotalHaberes");
-        var totalDescuentos = TryGetDecimal(root, "TotalItemsDescuentos");
         var nombre = TryGetString(root, "Nombre");
+        var parsed = new List<ReciboDocument>();
+        var uniqueIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        recibo = new ReciboDocument(
-            period.Id,
-            period.Display,
-            cuil,
-            nombre,
-            totalLiquido,
-            totalHaberes,
-            totalDescuentos,
-            "ARS",
-            "Emitido",
-            period.FechaEmisionUtc,
-            sourceId,
-            sourceLastWriteUtc,
-            json
-        );
+        foreach (var (cargo, cargoIndex) in cargos.EnumerateArray().Select((value, index) => (value, index)))
+        {
+            var liquido = TryGetDecimal(cargo, "Liquido")
+                ?? TryGetDecimal(cargo, "Neto")
+                ?? TryGetDecimal(root, "TotalLiquido")
+                ?? 0m;
+            var bruto = TryGetDecimal(cargo, "Bruto");
+            var totalHaberes = TryGetDecimal(cargo, "TotalHaberes")
+                ?? TryGetDecimal(cargo, "TotalItemsHaber");
+            var totalDescuentos = TryGetDecimal(cargo, "TotalItemsDescuento")
+                ?? TryGetDecimal(cargo, "TotalDescuentos");
+            var liquidoPalabras = TryGetString(cargo, "LiquidoPalabras");
 
-        return true;
+            var establecimiento = TryGetNestedString(cargo, "Establecimiento", "NombreInstitucion")
+                ?? TryGetNestedString(cargo, "Establecimiento", "Nombre")
+                ?? "Establecimiento";
+            var cargoDescripcion = TryGetNestedString(cargo, "Cargo", "Descripcion")
+                ?? "Cargo";
+            var fechaIngreso = TryGetString(cargo, "FechaIngreso");
+            var diasTrabajados = TryGetNestedInt(cargo, "Sueldo", "DiasTrabajados");
+
+            var idBase = BuildReciboId(period.Id, cargo, cargoIndex);
+            var id = EnsureUniqueId(idBase, uniqueIds, cargoIndex);
+
+            parsed.Add(new ReciboDocument(
+                id,
+                period.Display,
+                cuil,
+                nombre,
+                establecimiento,
+                cargoDescripcion,
+                fechaIngreso,
+                diasTrabajados,
+                liquido,
+                bruto,
+                totalHaberes,
+                totalDescuentos,
+                liquidoPalabras,
+                "ARS",
+                "Disponible",
+                period.FechaEmisionUtc,
+                cargoIndex,
+                sourceId,
+                sourceLastWriteUtc,
+                json));
+        }
+
+        recibos = parsed;
+        return parsed.Count > 0;
     }
 
     private bool TryResolvePeriod(JsonElement root, string filePath, out ReciboPeriod period)
@@ -653,6 +703,69 @@ public sealed class ReciboSueldoJsonService : IReciboSueldoJsonService
         return normalized;
     }
 
+    private static string BuildReciboId(string periodId, JsonElement cargo, int cargoIndex)
+    {
+        var establecimientoCode = SanitizeIdToken(
+            TryGetNestedString(cargo, "Establecimiento", "CodigoEstablecimiento")
+            ?? TryGetNestedString(cargo, "Establecimiento", "Cuise")
+            ?? "est");
+        var cargoCode = SanitizeIdToken(
+            TryGetString(cargo, "CodigoCargoPersonal")
+            ?? TryGetNestedString(cargo, "Cargo", "CodigoCargo")
+            ?? $"cargo{cargoIndex + 1:D2}");
+
+        return $"{periodId}-{establecimientoCode}-{cargoCode}".ToLowerInvariant();
+    }
+
+    private static string EnsureUniqueId(string baseId, ISet<string> uniqueIds, int cargoIndex)
+    {
+        var candidate = baseId;
+        var attempts = 0;
+        while (!uniqueIds.Add(candidate))
+        {
+            attempts++;
+            candidate = $"{baseId}-{cargoIndex + 1 + attempts:D2}";
+        }
+
+        return candidate;
+    }
+
+    private static string SanitizeIdToken(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "na";
+        }
+
+        var cleaned = new string(value
+            .Trim()
+            .ToLowerInvariant()
+            .Where(ch => char.IsLetterOrDigit(ch) || ch is '-' or '_')
+            .ToArray());
+
+        return string.IsNullOrWhiteSpace(cleaned) ? "na" : cleaned;
+    }
+
+    private static string? TryGetNestedString(JsonElement root, string nestedProperty, string propertyName)
+    {
+        if (!root.TryGetProperty(nestedProperty, out var nested) || nested.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        return TryGetString(nested, propertyName);
+    }
+
+    private static int? TryGetNestedInt(JsonElement root, string nestedProperty, string propertyName)
+    {
+        if (!root.TryGetProperty(nestedProperty, out var nested) || nested.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        return TryGetInt(nested, propertyName);
+    }
+
     private static string? TryGetString(JsonElement obj, string propertyName)
     {
         if (!obj.TryGetProperty(propertyName, out var element))
@@ -715,19 +828,6 @@ public sealed class ReciboSueldoJsonService : IReciboSueldoJsonService
         }
 
         return null;
-    }
-
-    private static decimal? TryGetFirstCargoDecimal(JsonElement root, string propertyName)
-    {
-        if (!root.TryGetProperty("Cargos", out var cargos) ||
-            cargos.ValueKind != JsonValueKind.Array ||
-            cargos.GetArrayLength() == 0)
-        {
-            return null;
-        }
-
-        var firstCargo = cargos[0];
-        return TryGetDecimal(firstCargo, propertyName);
     }
 
     private readonly record struct ReciboPeriod(
@@ -797,9 +897,9 @@ public sealed class ReciboPdfService : IReciboPdfService
             using var document = JsonDocument.Parse(sourceJson);
             var root = document.RootElement;
 
-            AppendMetadataLines(lines, root);
+            AppendMetadataLines(lines, root, recibo.CargoIndex);
 
-            var conceptos = ExtractConceptRows(root, 30);
+            var conceptos = ExtractConceptRows(root, recibo.CargoIndex, 30);
             if (conceptos.Count == 0)
             {
                 lines.Add("Sin conceptos en detalle.");
@@ -819,16 +919,16 @@ public sealed class ReciboPdfService : IReciboPdfService
                 }
             }
 
-            var totalHaberes = TryGetFirstCargoDecimal(root, "TotalItemsHaber") ?? recibo.TotalHaberes ?? 0m;
-            var totalDescuentos = TryGetFirstCargoDecimal(root, "TotalItemsDescuento") ?? recibo.TotalDescuentos ?? 0m;
-            var liquido = TryGetFirstCargoDecimal(root, "Liquido") ?? recibo.Importe;
+            var totalHaberes = TryGetCargoDecimal(root, recibo.CargoIndex, "TotalItemsHaber") ?? recibo.TotalHaberes ?? 0m;
+            var totalDescuentos = TryGetCargoDecimal(root, recibo.CargoIndex, "TotalItemsDescuento") ?? recibo.TotalDescuentos ?? 0m;
+            var liquido = TryGetCargoDecimal(root, recibo.CargoIndex, "Liquido") ?? recibo.Importe;
 
             lines.Add(new string('-', 118));
             lines.Add(
                 $"TOTAL HABERES: {PadLeftOrTrim(FormatAmount(totalHaberes), 18)}   TOTAL DESCUENTOS: {PadLeftOrTrim(FormatAmount(totalDescuentos), 18)}");
             lines.Add($"LÍQUIDO A COBRAR: {FormatAmount(liquido)}");
 
-            var liquidoPalabras = TryGetFirstCargoString(root, "LiquidoPalabras");
+            var liquidoPalabras = TryGetCargoString(root, recibo.CargoIndex, "LiquidoPalabras");
             if (!string.IsNullOrWhiteSpace(liquidoPalabras))
             {
                 lines.Add(string.Empty);
@@ -921,18 +1021,18 @@ public sealed class ReciboPdfService : IReciboPdfService
         return string.Join(", ", pieces.Where(p => !string.IsNullOrWhiteSpace(p)));
     }
 
-    private static void AppendMetadataLines(List<string> lines, JsonElement root)
+    private static void AppendMetadataLines(List<string> lines, JsonElement root, int cargoIndex)
     {
-        if (!TryGetFirstCargo(root, out var firstCargo))
+        if (!TryGetCargo(root, cargoIndex, out var cargoData))
         {
             return;
         }
 
-        var establecimiento = TryGetNestedString(firstCargo, "Establecimiento", "Nombre");
-        var domicilio = TryGetNestedString(firstCargo, "Establecimiento", "Domicilio");
-        var localidad = TryGetNestedString(firstCargo, "Establecimiento", "Localidad");
-        var formaPago = TryGetNestedString(firstCargo, "FormaPago", "Descripcion");
-        var cargo = TryGetNestedString(firstCargo, "Cargo", "Descripcion");
+        var establecimiento = TryGetNestedString(cargoData, "Establecimiento", "Nombre");
+        var domicilio = TryGetNestedString(cargoData, "Establecimiento", "Domicilio");
+        var localidad = TryGetNestedString(cargoData, "Establecimiento", "Localidad");
+        var formaPago = TryGetNestedString(cargoData, "FormaPago", "Descripcion");
+        var cargo = TryGetNestedString(cargoData, "Cargo", "Descripcion");
         var legajo = TryGetString(root, "Codigo");
 
         if (!string.IsNullOrWhiteSpace(establecimiento))
@@ -955,9 +1055,9 @@ public sealed class ReciboPdfService : IReciboPdfService
             lines.Add($"Cargo: {cargo}");
         }
 
-        var horasCargo = TryGetDecimal(firstCargo, "HorasCargo");
-        var antiguedad = TryGetNestedString(firstCargo, "Antiguedad", "Tipo");
-        var fechaIngreso = TryGetString(firstCargo, "FechaIngreso");
+        var horasCargo = TryGetDecimal(cargoData, "HorasCargo");
+        var antiguedad = TryGetNestedString(cargoData, "Antiguedad", "Tipo");
+        var fechaIngreso = TryGetString(cargoData, "FechaIngreso");
         var resumen = $"Horas: {(horasCargo?.ToString("0.##", CultureInfo.InvariantCulture) ?? "-")}";
         if (!string.IsNullOrWhiteSpace(antiguedad))
         {
@@ -971,15 +1071,15 @@ public sealed class ReciboPdfService : IReciboPdfService
         lines.Add(string.Empty);
     }
 
-    private static List<ConceptRow> ExtractConceptRows(JsonElement root, int maxItems)
+    private static List<ConceptRow> ExtractConceptRows(JsonElement root, int cargoIndex, int maxItems)
     {
         var rows = new List<ConceptRow>();
-        if (!TryGetFirstCargo(root, out var firstCargo))
+        if (!TryGetCargo(root, cargoIndex, out var cargoData))
         {
             return rows;
         }
 
-        if (!firstCargo.TryGetProperty("Items", out var items) || items.ValueKind != JsonValueKind.Array)
+        if (!cargoData.TryGetProperty("Items", out var items) || items.ValueKind != JsonValueKind.Array)
         {
             return rows;
         }
@@ -1020,7 +1120,7 @@ public sealed class ReciboPdfService : IReciboPdfService
         return rows;
     }
 
-    private static bool TryGetFirstCargo(JsonElement root, out JsonElement cargo)
+    private static bool TryGetCargo(JsonElement root, int cargoIndex, out JsonElement cargo)
     {
         cargo = default;
         if (!root.TryGetProperty("Cargos", out var cargos) ||
@@ -1030,13 +1130,19 @@ public sealed class ReciboPdfService : IReciboPdfService
             return false;
         }
 
-        cargo = cargos[0];
+        var safeIndex = cargoIndex;
+        if (safeIndex < 0 || safeIndex >= cargos.GetArrayLength())
+        {
+            safeIndex = 0;
+        }
+
+        cargo = cargos[safeIndex];
         return true;
     }
 
-    private static string? TryGetFirstCargoString(JsonElement root, string propertyName)
+    private static string? TryGetCargoString(JsonElement root, int cargoIndex, string propertyName)
     {
-        if (!TryGetFirstCargo(root, out var cargo))
+        if (!TryGetCargo(root, cargoIndex, out var cargo))
         {
             return null;
         }
@@ -1044,9 +1150,9 @@ public sealed class ReciboPdfService : IReciboPdfService
         return TryGetString(cargo, propertyName);
     }
 
-    private static decimal? TryGetFirstCargoDecimal(JsonElement root, string propertyName)
+    private static decimal? TryGetCargoDecimal(JsonElement root, int cargoIndex, string propertyName)
     {
-        if (!TryGetFirstCargo(root, out var cargo))
+        if (!TryGetCargo(root, cargoIndex, out var cargo))
         {
             return null;
         }

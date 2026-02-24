@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  getReciboDetalle,
   getReciboPdfUrl,
   getReciboSueldo,
   logReciboSueldoView,
+  type ReciboDetalleResponse,
   type ReciboItem,
 } from '../services/recibo-sueldo';
 import { logger } from '../services/logger';
@@ -21,6 +23,10 @@ export default function ReciboSueldo({ features }: ReciboSueldoProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [items, setItems] = useState<ReciboItem[]>([]);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [detailById, setDetailById] = useState<Record<string, ReciboDetalleResponse>>({});
+  const [detailLoadingId, setDetailLoadingId] = useState<string | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -47,7 +53,7 @@ export default function ReciboSueldo({ features }: ReciboSueldoProps) {
     });
   }, [items]);
 
-  const openReceipt = async (recibo: ReciboItem, action: 'view' | 'download' | 'sign') => {
+  const openReceipt = async (recibo: ReciboItem, action: 'download' | 'sign') => {
     try {
       await logReciboSueldoView('open', recibo.id);
     } catch (err) {
@@ -60,6 +66,32 @@ export default function ReciboSueldo({ features }: ReciboSueldoProps) {
       : basePdfUrl;
 
     window.open(targetUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleToggleDetail = async (recibo: ReciboItem) => {
+    if (expandedId === recibo.id) {
+      setExpandedId(null);
+      setDetailError(null);
+      return;
+    }
+
+    setExpandedId(recibo.id);
+    setDetailError(null);
+
+    if (detailById[recibo.id]) {
+      return;
+    }
+
+    setDetailLoadingId(recibo.id);
+    try {
+      const detail = await getReciboDetalle(recibo.id);
+      setDetailById((current) => ({ ...current, [recibo.id]: detail }));
+    } catch (err) {
+      logger.captureError(err, 'ReciboSueldo.getReciboDetalle');
+      setDetailError('No pudimos cargar el detalle de este recibo. Intentá nuevamente.');
+    } finally {
+      setDetailLoadingId((current) => (current === recibo.id ? null : current));
+    }
   };
 
   return (
@@ -98,57 +130,146 @@ export default function ReciboSueldo({ features }: ReciboSueldoProps) {
           )}
 
           {!loading && !error && sortedItems.length === 0 && (
-            <p className="state-message">
-              Todavía no encontramos recibos para mostrar. Cuando estén disponibles, van a aparecer acá.
-            </p>
+            <p className="state-message">No hay recibos disponibles.</p>
           )}
 
           {!loading && !error && sortedItems.length > 0 && (
             <div className="receipt-list" role="list">
               {sortedItems.map((recibo) => {
                 const status = toHumanStatus(recibo.estado);
-                const signable = status === 'Pendiente de firma';
+                const canSign = status === 'Pendiente de firma';
+                const detail = detailById[recibo.id];
+                const isExpanded = expandedId === recibo.id;
+                const isDetailLoading = detailLoadingId === recibo.id;
 
                 return (
                   <article className="receipt-card" role="listitem" key={recibo.id}>
-                    <h3 className="receipt-period">{getPeriodLabel(recibo)}</h3>
+                    <h3 className="receipt-company">{recibo.establecimiento ?? 'Establecimiento'}</h3>
+                    <p className="receipt-role">{recibo.cargo ?? 'Cargo no informado'}</p>
                     <p className="receipt-detail">
-                      <span className="receipt-label">Emitido:</span> {formatDate(recibo.fechaEmision)}
-                    </p>
-                    <p className="receipt-detail">
-                      <span className="receipt-label">Neto a cobrar:</span> {formatMoney(recibo.importe, recibo.moneda)}
+                      <span className="receipt-label">Periodo:</span> {getPeriodLabel(recibo)}
                     </p>
                     <p className={`receipt-status ${statusToClassName(status)}`}>
                       Estado: {status}
                     </p>
+                    <p className="receipt-liquid-label">Líquido a cobrar</p>
+                    <p className="receipt-liquid-value">{formatMoney(recibo.importe, recibo.moneda)}</p>
 
                     <div className="receipt-actions">
                       <button
                         type="button"
                         className="receipt-action primary"
-                        onClick={() => openReceipt(recibo, 'view')}
+                        onClick={() => handleToggleDetail(recibo)}
                       >
-                        Ver recibo
+                        {isExpanded ? 'Ocultar detalle' : 'Ver detalle'}
                       </button>
 
-                      {signable ? (
-                        <button
-                          type="button"
-                          className="receipt-action accent"
-                          onClick={() => openReceipt(recibo, 'sign')}
-                        >
-                          Firmar
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          className="receipt-action secondary"
-                          onClick={() => openReceipt(recibo, 'download')}
-                        >
-                          Descargar PDF
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        className="receipt-action secondary"
+                        onClick={() => openReceipt(recibo, 'download')}
+                      >
+                        Descargar PDF
+                      </button>
+
+                      <button
+                        type="button"
+                        className="receipt-action accent"
+                        onClick={() => openReceipt(recibo, 'sign')}
+                        disabled={!canSign}
+                        title={canSign ? 'Firmar recibo' : 'Este recibo no requiere firma'}
+                      >
+                        Firmar
+                      </button>
                     </div>
+
+                    {isExpanded && (
+                      <section className="receipt-detail-panel">
+                        {isDetailLoading && (
+                          <p className="state-message">Cargando detalle del recibo...</p>
+                        )}
+
+                        {!isDetailLoading && detailError && (
+                          <p className="state-message is-error">{detailError}</p>
+                        )}
+
+                        {!isDetailLoading && detail && (
+                          <>
+                            <div className="receipt-meta-grid">
+                              <p><strong>Periodo:</strong> {detail.periodo}</p>
+                              <p><strong>Fecha de emisión:</strong> {formatDate(detail.fechaEmision)}</p>
+                              <p><strong>Fecha de ingreso:</strong> {formatMaybeDate(detail.fechaIngreso)}</p>
+                              <p><strong>Días trabajados:</strong> {detail.diasTrabajados ?? '-'}</p>
+                            </div>
+
+                            <div className="receipt-tables">
+                              <div>
+                                <h4>Haberes</h4>
+                                <table>
+                                  <thead>
+                                    <tr>
+                                      <th>Código</th>
+                                      <th>Concepto</th>
+                                      <th className="amount-col">Monto</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {detail.haberes.length === 0 && (
+                                      <tr>
+                                        <td colSpan={3} className="empty-row">Sin haberes cargados.</td>
+                                      </tr>
+                                    )}
+                                    {detail.haberes.map((item, index) => (
+                                      <tr key={`${detail.id}-hab-${item.codigo}-${index}`}>
+                                        <td>{item.codigo}</td>
+                                        <td>{item.concepto}</td>
+                                        <td className="amount-col">{formatMoney(item.monto, 'ARS')}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+
+                              <div>
+                                <h4>Descuentos</h4>
+                                <table>
+                                  <thead>
+                                    <tr>
+                                      <th>Código</th>
+                                      <th>Concepto</th>
+                                      <th className="amount-col">Monto</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {detail.descuentos.length === 0 && (
+                                      <tr>
+                                        <td colSpan={3} className="empty-row">Sin descuentos cargados.</td>
+                                      </tr>
+                                    )}
+                                    {detail.descuentos.map((item, index) => (
+                                      <tr key={`${detail.id}-des-${item.codigo}-${index}`}>
+                                        <td>{item.codigo}</td>
+                                        <td>{item.concepto}</td>
+                                        <td className="amount-col">{formatMoney(item.monto, 'ARS')}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+
+                            <div className="receipt-totals">
+                              <p><strong>Bruto:</strong> {formatMoney(detail.bruto, 'ARS')}</p>
+                              <p><strong>Total descuentos:</strong> {formatMoney(detail.totalDescuentos, 'ARS')}</p>
+                              <p className="liquido-total"><strong>Líquido:</strong> {formatMoney(detail.liquido, 'ARS')}</p>
+                              {detail.liquidoPalabras && (
+                                <p className="liquido-palabras"><strong>En palabras:</strong> {detail.liquidoPalabras}</p>
+                              )}
+                            </div>
+                          </>
+                        )}
+                      </section>
+                    )}
                   </article>
                 );
               })}
@@ -176,6 +297,19 @@ function formatDate(value: string): string {
   }
 
   return date.toLocaleDateString('es-AR');
+}
+
+function formatMaybeDate(value: string | null | undefined): string {
+  if (!value) {
+    return '-';
+  }
+
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toLocaleDateString('es-AR');
+  }
+
+  return value;
 }
 
 function formatMoney(amount: number, currency: string): string {

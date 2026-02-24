@@ -98,7 +98,7 @@
   padding: 1.35rem 1.25rem 1.25rem;
 }
 
-.receipt-period {
+.receipt-company {
   margin: 0;
   font-size: clamp(1.45rem, 2.2vw, 1.8rem);
   line-height: 1.2;
@@ -106,10 +106,17 @@
   color: #111827;
 }
 
+.receipt-role {
+  margin: 0.5rem 0 0;
+  color: #1f2937;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
 .receipt-detail {
   margin: 0.65rem 0 0;
   color: #0f172a;
-  font-size: 1.08rem;
+  font-size: 1.05rem;
   line-height: 1.4;
 }
 
@@ -118,8 +125,8 @@
 }
 
 .receipt-status {
-  margin: 0.85rem 0 0;
-  font-size: 1.08rem;
+  margin: 0.8rem 0 0;
+  font-size: 1.02rem;
   font-weight: 800;
 }
 
@@ -135,10 +142,23 @@
   color: #9a3412;
 }
 
+.receipt-liquid-label {
+  margin: 0.95rem 0 0;
+  font-size: 1rem;
+  color: #334155;
+}
+
+.receipt-liquid-value {
+  margin: 0.2rem 0 0;
+  font-size: clamp(1.7rem, 2.8vw, 2.2rem);
+  font-weight: 900;
+  color: #0f172a;
+}
+
 .receipt-actions {
   margin-top: 1rem;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.75rem;
 }
 
@@ -147,10 +167,15 @@
   border-radius: 12px;
   min-height: 52px;
   padding: 0.85rem 1rem;
-  font-size: 1.02rem;
+  font-size: 1rem;
   font-weight: 800;
   letter-spacing: 0.01em;
   cursor: pointer;
+}
+
+.receipt-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .receipt-action.primary {
@@ -180,6 +205,103 @@
   background: #92400e;
 }
 
+.receipt-detail-panel {
+  margin-top: 1.2rem;
+  border-top: 1px solid #dbe3ee;
+  padding-top: 1rem;
+}
+
+.receipt-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem 1rem;
+}
+
+.receipt-meta-grid p {
+  margin: 0;
+  font-size: 1rem;
+  color: #0f172a;
+}
+
+.receipt-tables {
+  margin-top: 1rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.receipt-tables h4 {
+  margin: 0 0 0.55rem;
+  font-size: 1.05rem;
+  color: #0f172a;
+}
+
+.receipt-tables table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid #dbe3ee;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.receipt-tables th,
+.receipt-tables td {
+  padding: 0.58rem 0.55rem;
+  text-align: left;
+  border-bottom: 1px solid #eef2f7;
+  font-size: 0.95rem;
+}
+
+.receipt-tables th {
+  background: #f8fafc;
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.amount-col {
+  text-align: right !important;
+  white-space: nowrap;
+}
+
+.empty-row {
+  text-align: center !important;
+  color: #475569;
+}
+
+.receipt-totals {
+  margin-top: 1rem;
+  border: 1px solid #dbe3ee;
+  border-radius: 10px;
+  padding: 0.9rem;
+  background: #f8fafc;
+}
+
+.receipt-totals p {
+  margin: 0.3rem 0;
+  color: #0f172a;
+  font-size: 1rem;
+}
+
+.receipt-totals .liquido-total {
+  font-size: 1.15rem;
+  font-weight: 800;
+}
+
+.receipt-totals .liquido-palabras {
+  color: #334155;
+}
+
+@media (max-width: 900px) {
+  .receipt-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .receipt-meta-grid,
+  .receipt-tables {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 768px) {
   .nav-content {
     flex-direction: column;
@@ -193,9 +315,5 @@
 
   .receipt-page-card {
     padding: 1.35rem;
-  }
-
-  .receipt-actions {
-    grid-template-columns: 1fr;
   }
 }

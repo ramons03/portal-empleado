@@ -6,11 +6,38 @@ export type ReciboItem = {
   estado: string;
   fechaEmision: string;
   pdfUrl?: string | null;
+  establecimiento?: string | null;
+  cargo?: string | null;
+  fechaIngreso?: string | null;
+  diasTrabajados?: number | null;
 };
 
 export type ReciboSueldoResponse = {
   cuil: string;
   items: ReciboItem[];
+};
+
+export type ReciboConceptoItem = {
+  codigo: string;
+  concepto: string;
+  monto: number;
+};
+
+export type ReciboDetalleResponse = {
+  id: string;
+  establecimiento: string;
+  cargo: string;
+  periodo: string;
+  fechaEmision: string;
+  fechaIngreso?: string | null;
+  diasTrabajados?: number | null;
+  bruto: number;
+  totalDescuentos: number;
+  liquido: number;
+  liquidoPalabras?: string | null;
+  haberes: ReciboConceptoItem[];
+  descuentos: ReciboConceptoItem[];
+  pdfUrl: string;
 };
 
 export type ReceiptYearsResponse = {
@@ -65,6 +92,18 @@ export async function getReciboSueldo(): Promise<ReciboSueldoResponse> {
 
   if (!response.ok) {
     throw await toApiError(response, 'Failed to get recibo-sueldo');
+  }
+
+  return await response.json();
+}
+
+export async function getReciboDetalle(reciboId: string): Promise<ReciboDetalleResponse> {
+  const response = await fetch(`${API_BASE_URL}/recibo-sueldo/${encodeURIComponent(reciboId)}`, {
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    throw await toApiError(response, 'Failed to get recibo detail');
   }
 
   return await response.json();
