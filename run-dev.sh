@@ -3,11 +3,16 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE_FILE="${COMPOSE_FILE:-$SCRIPT_DIR/docker-compose.dev.yml}"
-DEFAULT_ENV_FILE="$SCRIPT_DIR/.env.dev"
+DEFAULT_ENV_FILE="$SCRIPT_DIR/.env"
 ENV_FILE="${ENV_FILE:-$DEFAULT_ENV_FILE}"
 
-# If .env.dev doesn't exist, fallback to .env
-if [[ ! -f "$ENV_FILE" && "$ENV_FILE" == "$DEFAULT_ENV_FILE" && -f "$SCRIPT_DIR/.env" ]]; then
+# If .env doesn't exist, fallback to .env.dev
+if [[ ! -f "$ENV_FILE" && "$ENV_FILE" == "$DEFAULT_ENV_FILE" && -f "$SCRIPT_DIR/.env.dev" ]]; then
+  ENV_FILE="$SCRIPT_DIR/.env.dev"
+fi
+
+# Backward-compatible fallback for explicit .env.dev default behavior
+if [[ ! -f "$ENV_FILE" && "$ENV_FILE" == "$SCRIPT_DIR/.env.dev" && -f "$SCRIPT_DIR/.env" ]]; then
   ENV_FILE="$SCRIPT_DIR/.env"
 fi
 
@@ -37,7 +42,7 @@ Actions:
 
 Environment:
   COMPOSE_FILE  Override compose file path (default: docker-compose.dev.yml)
-  ENV_FILE      Override env file path (default: .env.dev, fallback to .env)
+  ENV_FILE      Override env file path (default: .env, fallback to .env.dev)
 
 Examples:
   ./run-dev.sh

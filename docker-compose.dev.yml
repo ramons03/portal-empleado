@@ -3,13 +3,15 @@ services:
     build:
       context: .
       dockerfile: SAED-PortalEmpleado.Api/Dockerfile.dev
+    env_file:
+      - ./.env
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+      DatabaseProvider: ${DatabaseProvider:-Sqlite}
+      ConnectionStrings__DefaultConnection: ${ConnectionStrings__DefaultConnection:-Data Source=App_Data/portal-empleado-dev.db}
+      Authentication__DevLogin__Enabled: ${Authentication__DevLogin__Enabled:-false}
       DOTNET_USE_POLLING_FILE_WATCHER: "1"
       DOTNET_WATCH_SUPPRESS_LAUNCH_BROWSER: "1"
-      Authentication__DevLogin__Enabled: "true"
-      DatabaseProvider: Sqlite
-      ConnectionStrings__DefaultConnection: Data Source=/workspace/SAED-PortalEmpleado.Api/App_Data/portal-empleado-dev.db
       SecuritySettings__Cookie__Secure: "false"
       ReciboSueldo__DataDirectory: /workspace/recibo-sueldo
     volumes:
@@ -22,10 +24,12 @@ services:
     build:
       context: .
       dockerfile: frontend/portal-empleado/Dockerfile.dev
+    env_file:
+      - ./.env
     environment:
-      VITE_AUTH_MODE: dev
-      VITE_API_PROXY_TARGET: http://api:5011
-      VITE_SIGNIN_PROXY_TARGET: http://api:5011
+      VITE_AUTH_MODE: ${VITE_AUTH_MODE:-google}
+      VITE_API_PROXY_TARGET: ${VITE_API_PROXY_TARGET:-http://api:5011}
+      VITE_SIGNIN_PROXY_TARGET: ${VITE_SIGNIN_PROXY_TARGET:-http://api:5011}
       CHOKIDAR_USEPOLLING: "true"
     volumes:
       - ./frontend/portal-empleado:/workspace/frontend/portal-empleado
