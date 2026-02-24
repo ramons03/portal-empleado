@@ -58,7 +58,7 @@ try
     builder.Services.Configure<DirectorySettings>(builder.Configuration.GetSection("Directory"));
     builder.Services.AddSingleton<IGoogleDirectoryCuilService, GoogleDirectoryCuilService>();
     builder.Services.AddSingleton<IReciboSueldoJsonService, ReciboSueldoJsonService>();
-    builder.Services.AddSingleton<IReciboPdfService, ReciboPdfService>();
+    builder.Services.AddScoped<IReciboPdfService, ReciboPdfService>();
     
     // Add Response Caching
     builder.Services.AddResponseCaching();

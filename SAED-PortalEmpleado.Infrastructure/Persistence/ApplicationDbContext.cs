@@ -11,6 +11,7 @@ public class ApplicationDbContext : DbContext
     }
 
     public DbSet<Employee> Employees { get; set; }
+    public DbSet<CompanyProfile> CompanyProfiles { get; set; }
     public DbSet<ReciboViewEvent> ReciboViewEvents { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -30,6 +31,20 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => e.GoogleSub).IsUnique();
             entity.HasIndex(e => e.Email).IsUnique();
             entity.HasIndex(e => e.Cuil).IsUnique();
+        });
+
+        modelBuilder.Entity<CompanyProfile>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.DisplayName).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Cuit).IsRequired().HasMaxLength(32);
+            entity.Property(e => e.AddressLine).HasMaxLength(300);
+            entity.Property(e => e.City).HasMaxLength(120);
+            entity.Property(e => e.Province).HasMaxLength(120);
+            entity.Property(e => e.PostalCode).HasMaxLength(32);
+            entity.Property(e => e.Country).HasMaxLength(120);
+            entity.Property(e => e.CreatedAtUtc).IsRequired();
+            entity.Property(e => e.UpdatedAtUtc);
         });
 
         modelBuilder.Entity<ReciboViewEvent>(entity =>

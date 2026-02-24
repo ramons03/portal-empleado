@@ -5,7 +5,9 @@ using System.Text.RegularExpressions;
 using Amazon;
 using Amazon.S3;
 using Amazon.S3.Model;
+using Microsoft.EntityFrameworkCore;
 using SAED_PortalEmpleado.Application.Common.Interfaces;
+using SAED_PortalEmpleado.Infrastructure.Persistence;
 
 namespace SAED_PortalEmpleado.Api.Services;
 
@@ -32,7 +34,8 @@ public sealed record ReciboDocument(
     string Estado,
     DateTime FechaEmision,
     string SourceFile,
-    DateTime SourceLastWriteUtc
+    DateTime SourceLastWriteUtc,
+    string? SourceJson
 );
 
 public sealed record ReciboSueldoS3Settings(
@@ -379,7 +382,8 @@ public sealed class ReciboSueldoJsonService : IReciboSueldoJsonService
             "Emitido",
             period.FechaEmisionUtc,
             sourceId,
-            sourceLastWriteUtc
+            sourceLastWriteUtc,
+            json
         );
 
         return true;
@@ -737,72 +741,247 @@ public sealed class ReciboSueldoJsonService : IReciboSueldoJsonService
 
 public sealed class ReciboPdfService : IReciboPdfService
 {
+    private readonly ApplicationDbContext _context;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<ReciboPdfService> _logger;
 
-    public ReciboPdfService(ILogger<ReciboPdfService> logger)
+    public ReciboPdfService(
+        ApplicationDbContext context,
+        IConfiguration configuration,
+        ILogger<ReciboPdfService> logger)
     {
+        _context = context;
+        _configuration = configuration;
         _logger = logger;
     }
 
     public async Task<byte[]> BuildPdfAsync(ReciboDocument recibo, CancellationToken cancellationToken = default)
     {
-        var lines = new List<string>
+        var company = await ResolveCompanyProfileAsync(cancellationToken);
+        var lines = new List<string> { "RECIBO DE HABERES" };
+
+        if (company is not null)
         {
-            "Portal Empleado - Recibo de Haberes",
-            $"Periodo: {recibo.Periodo}",
-            $"Identificador: {recibo.Id}",
+            lines.Add($"Empresa: {company.DisplayName}");
+            lines.Add($"CUIT Empresa: {company.Cuit}");
+
+            var domicilio = BuildAddressLine(company);
+            if (!string.IsNullOrWhiteSpace(domicilio))
+            {
+                lines.Add($"Domicilio: {domicilio}");
+            }
+        }
+
+        lines.AddRange(new[]
+        {
+            string.Empty,
+            new string('=', 118),
+            string.Empty,
+            $"Periodo: {recibo.Periodo}   Fecha Emisión: {recibo.FechaEmision:dd/MM/yyyy}   ID: {recibo.Id}",
             $"Empleado: {recibo.Nombre ?? "(sin nombre)"}",
             $"CUIL: {recibo.Cuil}",
-            $"Total Liquido: ARS {recibo.Importe:N2}",
-            $"Total Haberes: ARS {(recibo.TotalHaberes ?? 0m):N2}",
-            $"Total Descuentos: ARS {(recibo.TotalDescuentos ?? 0m):N2}",
-            $"Fecha Emision: {recibo.FechaEmision:dd/MM/yyyy}",
-            ""
-        };
+            string.Empty,
+            "Cod   Concepto                                        T   Haber              Descuento",
+            new string('-', 118),
+        });
 
-        if (recibo.SourceFile.StartsWith("s3://", StringComparison.OrdinalIgnoreCase))
+        var sourceJson = await ResolveSourceJsonAsync(recibo, cancellationToken);
+        if (string.IsNullOrWhiteSpace(sourceJson))
         {
-            lines.Add("Conceptos: detalle no disponible (origen S3).");
+            lines.Add("No se encontraron detalles del recibo para renderizar conceptos.");
             return MinimalPdfBuilder.BuildSinglePage(lines);
         }
 
         try
         {
-            var json = await File.ReadAllTextAsync(recibo.SourceFile, cancellationToken);
-            using var document = JsonDocument.Parse(json);
+            using var document = JsonDocument.Parse(sourceJson);
             var root = document.RootElement;
 
-            var conceptos = ExtractConceptLines(root, 18);
-            if (conceptos.Count > 0)
+            AppendMetadataLines(lines, root);
+
+            var conceptos = ExtractConceptRows(root, 30);
+            if (conceptos.Count == 0)
             {
-                lines.Add("Conceptos:");
-                lines.AddRange(conceptos);
+                lines.Add("Sin conceptos en detalle.");
+            }
+            else
+            {
+                foreach (var concepto in conceptos)
+                {
+                    var codigo = PadOrTrim(concepto.Codigo, 5);
+                    var descripcion = PadOrTrim(concepto.Descripcion, 46);
+                    var tipo = PadOrTrim(concepto.Tipo, 2);
+                    var haber = concepto.EsDescuento ? string.Empty : FormatAmount(concepto.Monto);
+                    var descuento = concepto.EsDescuento ? FormatAmount(concepto.Monto) : string.Empty;
+
+                    lines.Add(
+                        $"{codigo} {descripcion} {tipo} {PadLeftOrTrim(haber, 16)} {PadLeftOrTrim(descuento, 16)}");
+                }
+            }
+
+            var totalHaberes = TryGetFirstCargoDecimal(root, "TotalItemsHaber") ?? recibo.TotalHaberes ?? 0m;
+            var totalDescuentos = TryGetFirstCargoDecimal(root, "TotalItemsDescuento") ?? recibo.TotalDescuentos ?? 0m;
+            var liquido = TryGetFirstCargoDecimal(root, "Liquido") ?? recibo.Importe;
+
+            lines.Add(new string('-', 118));
+            lines.Add(
+                $"TOTAL HABERES: {PadLeftOrTrim(FormatAmount(totalHaberes), 18)}   TOTAL DESCUENTOS: {PadLeftOrTrim(FormatAmount(totalDescuentos), 18)}");
+            lines.Add($"LÍQUIDO A COBRAR: {FormatAmount(liquido)}");
+
+            var liquidoPalabras = TryGetFirstCargoString(root, "LiquidoPalabras");
+            if (!string.IsNullOrWhiteSpace(liquidoPalabras))
+            {
+                lines.Add(string.Empty);
+                lines.Add($"Son pesos: {liquidoPalabras}");
             }
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Could not extract conceptos for PDF from {SourceFile}", recibo.SourceFile);
+            _logger.LogWarning(ex, "Could not render detailed PDF for source {SourceFile}", recibo.SourceFile);
             lines.Add("No se pudieron cargar los conceptos detallados.");
         }
 
         return MinimalPdfBuilder.BuildSinglePage(lines);
     }
 
-    private static List<string> ExtractConceptLines(JsonElement root, int maxItems)
+    private async Task<string?> ResolveSourceJsonAsync(ReciboDocument recibo, CancellationToken cancellationToken)
     {
-        var lines = new List<string>();
-        if (!root.TryGetProperty("Cargos", out var cargos) ||
-            cargos.ValueKind != JsonValueKind.Array ||
-            cargos.GetArrayLength() == 0)
+        if (!string.IsNullOrWhiteSpace(recibo.SourceJson))
         {
-            return lines;
+            return recibo.SourceJson;
         }
 
-        var firstCargo = cargos[0];
-        if (!firstCargo.TryGetProperty("Items", out var items) ||
-            items.ValueKind != JsonValueKind.Array)
+        if (recibo.SourceFile.StartsWith("s3://", StringComparison.OrdinalIgnoreCase))
         {
-            return lines;
+            return null;
+        }
+
+        if (!File.Exists(recibo.SourceFile))
+        {
+            return null;
+        }
+
+        return await File.ReadAllTextAsync(recibo.SourceFile, cancellationToken);
+    }
+
+    private async Task<CompanyProfileSnapshot?> ResolveCompanyProfileAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var company = await _context.CompanyProfiles
+                .AsNoTracking()
+                .OrderByDescending(c => c.UpdatedAtUtc ?? c.CreatedAtUtc)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (company is not null)
+            {
+                return new CompanyProfileSnapshot(
+                    company.DisplayName,
+                    company.Cuit,
+                    company.AddressLine,
+                    company.City,
+                    company.Province,
+                    company.PostalCode,
+                    company.Country);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not load company profile from database.");
+        }
+
+        var fallback = new CompanyProfileSnapshot(
+            _configuration["ReciboSueldo:Company:DisplayName"] ?? string.Empty,
+            _configuration["ReciboSueldo:Company:Cuit"] ?? string.Empty,
+            _configuration["ReciboSueldo:Company:AddressLine"],
+            _configuration["ReciboSueldo:Company:City"],
+            _configuration["ReciboSueldo:Company:Province"],
+            _configuration["ReciboSueldo:Company:PostalCode"],
+            _configuration["ReciboSueldo:Company:Country"]);
+
+        if (string.IsNullOrWhiteSpace(fallback.DisplayName) || string.IsNullOrWhiteSpace(fallback.Cuit))
+        {
+            return null;
+        }
+
+        return fallback;
+    }
+
+    private static string BuildAddressLine(CompanyProfileSnapshot company)
+    {
+        var pieces = new[]
+        {
+            company.AddressLine,
+            company.City,
+            company.Province,
+            company.PostalCode,
+            company.Country
+        };
+
+        return string.Join(", ", pieces.Where(p => !string.IsNullOrWhiteSpace(p)));
+    }
+
+    private static void AppendMetadataLines(List<string> lines, JsonElement root)
+    {
+        if (!TryGetFirstCargo(root, out var firstCargo))
+        {
+            return;
+        }
+
+        var establecimiento = TryGetNestedString(firstCargo, "Establecimiento", "Nombre");
+        var domicilio = TryGetNestedString(firstCargo, "Establecimiento", "Domicilio");
+        var localidad = TryGetNestedString(firstCargo, "Establecimiento", "Localidad");
+        var formaPago = TryGetNestedString(firstCargo, "FormaPago", "Descripcion");
+        var cargo = TryGetNestedString(firstCargo, "Cargo", "Descripcion");
+        var legajo = TryGetString(root, "Codigo");
+
+        if (!string.IsNullOrWhiteSpace(establecimiento))
+        {
+            lines.Add($"Establecimiento: {establecimiento}");
+        }
+
+        var domicilioCompleto = string.Join(", ", new[] { domicilio, localidad }.Where(v => !string.IsNullOrWhiteSpace(v)));
+        if (!string.IsNullOrWhiteSpace(domicilioCompleto))
+        {
+            lines.Add($"Domicilio Est.: {domicilioCompleto}");
+        }
+
+        var legajoText = string.IsNullOrWhiteSpace(legajo) ? "-" : legajo;
+        var formaPagoText = string.IsNullOrWhiteSpace(formaPago) ? "-" : formaPago;
+        lines.Add($"Legajo: {legajoText}   Forma de Pago: {formaPagoText}");
+
+        if (!string.IsNullOrWhiteSpace(cargo))
+        {
+            lines.Add($"Cargo: {cargo}");
+        }
+
+        var horasCargo = TryGetDecimal(firstCargo, "HorasCargo");
+        var antiguedad = TryGetNestedString(firstCargo, "Antiguedad", "Tipo");
+        var fechaIngreso = TryGetString(firstCargo, "FechaIngreso");
+        var resumen = $"Horas: {(horasCargo?.ToString("0.##", CultureInfo.InvariantCulture) ?? "-")}";
+        if (!string.IsNullOrWhiteSpace(antiguedad))
+        {
+            resumen += $"   Antigüedad: {antiguedad}";
+        }
+        if (!string.IsNullOrWhiteSpace(fechaIngreso))
+        {
+            resumen += $"   Fecha Ingreso: {fechaIngreso}";
+        }
+        lines.Add(resumen);
+        lines.Add(string.Empty);
+    }
+
+    private static List<ConceptRow> ExtractConceptRows(JsonElement root, int maxItems)
+    {
+        var rows = new List<ConceptRow>();
+        if (!TryGetFirstCargo(root, out var firstCargo))
+        {
+            return rows;
+        }
+
+        if (!firstCargo.TryGetProperty("Items", out var items) || items.ValueKind != JsonValueKind.Array)
+        {
+            return rows;
         }
 
         foreach (var item in items.EnumerateArray().Take(maxItems))
@@ -820,14 +999,69 @@ public sealed class ReciboPdfService : IReciboPdfService
                 descripcion = "Concepto";
             }
 
+            var codigo = TryGetString(item, "CodigoItem")
+                ?? (item.TryGetProperty("Item", out var itemNode) ? TryGetString(itemNode, "CodigoItem") : null)
+                ?? string.Empty;
+            var tipo = TryGetString(item, "TipoItem")
+                ?? (item.TryGetProperty("Item", out var itemNode2) ? TryGetString(itemNode2, "TipoItem") : null)
+                ?? string.Empty;
+
             var monto = TryGetDecimal(item, "TotalMontoItem")
                 ?? TryGetDecimal(item, "MontoItem")
                 ?? 0m;
 
-            lines.Add($"- {descripcion}: ARS {monto:N2}");
+            var esDescuento = TryGetBool(item, "EsDescuento")
+                ?? (item.TryGetProperty("Item", out var nestedItemBool) ? TryGetBool(nestedItemBool, "Descuento") : null)
+                ?? false;
+
+            rows.Add(new ConceptRow(codigo, descripcion, tipo, monto, esDescuento));
         }
 
-        return lines;
+        return rows;
+    }
+
+    private static bool TryGetFirstCargo(JsonElement root, out JsonElement cargo)
+    {
+        cargo = default;
+        if (!root.TryGetProperty("Cargos", out var cargos) ||
+            cargos.ValueKind != JsonValueKind.Array ||
+            cargos.GetArrayLength() == 0)
+        {
+            return false;
+        }
+
+        cargo = cargos[0];
+        return true;
+    }
+
+    private static string? TryGetFirstCargoString(JsonElement root, string propertyName)
+    {
+        if (!TryGetFirstCargo(root, out var cargo))
+        {
+            return null;
+        }
+
+        return TryGetString(cargo, propertyName);
+    }
+
+    private static decimal? TryGetFirstCargoDecimal(JsonElement root, string propertyName)
+    {
+        if (!TryGetFirstCargo(root, out var cargo))
+        {
+            return null;
+        }
+
+        return TryGetDecimal(cargo, propertyName);
+    }
+
+    private static string? TryGetNestedString(JsonElement root, string nestedProperty, string propertyName)
+    {
+        if (!root.TryGetProperty(nestedProperty, out var nested) || nested.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        return TryGetString(nested, propertyName);
     }
 
     private static string? TryGetString(JsonElement obj, string propertyName)
@@ -847,15 +1081,107 @@ public sealed class ReciboPdfService : IReciboPdfService
             return null;
         }
 
+        return TryGetDecimal(element);
+    }
+
+    private static decimal? TryGetDecimal(JsonElement element)
+    {
         if (element.ValueKind == JsonValueKind.Number && element.TryGetDecimal(out var n))
         {
             return n;
         }
 
-        return decimal.TryParse(element.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed)
-            ? parsed
+        if (element.ValueKind != JsonValueKind.String)
+        {
+            return null;
+        }
+
+        var text = element.GetString();
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return null;
+        }
+
+        if (decimal.TryParse(text, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsedInvariant))
+        {
+            return parsedInvariant;
+        }
+
+        return decimal.TryParse(text, NumberStyles.Any, CultureInfo.GetCultureInfo("es-AR"), out var parsedEs)
+            ? parsedEs
             : null;
     }
+
+    private static bool? TryGetBool(JsonElement obj, string propertyName)
+    {
+        if (!obj.TryGetProperty(propertyName, out var element))
+        {
+            return null;
+        }
+
+        if (element.ValueKind == JsonValueKind.True)
+        {
+            return true;
+        }
+
+        if (element.ValueKind == JsonValueKind.False)
+        {
+            return false;
+        }
+
+        if (element.ValueKind == JsonValueKind.String &&
+            bool.TryParse(element.GetString(), out var parsedBool))
+        {
+            return parsedBool;
+        }
+
+        return null;
+    }
+
+    private static string FormatAmount(decimal value)
+    {
+        return value.ToString("N2", CultureInfo.GetCultureInfo("es-AR"));
+    }
+
+    private static string PadOrTrim(string? value, int width)
+    {
+        var safe = (value ?? string.Empty).Trim();
+        if (safe.Length > width)
+        {
+            safe = safe[..Math.Max(0, width - 3)] + "...";
+        }
+
+        return safe.PadRight(width);
+    }
+
+    private static string PadLeftOrTrim(string? value, int width)
+    {
+        var safe = (value ?? string.Empty).Trim();
+        if (safe.Length > width)
+        {
+            safe = safe[^width..];
+        }
+
+        return safe.PadLeft(width);
+    }
+
+    private sealed record CompanyProfileSnapshot(
+        string DisplayName,
+        string Cuit,
+        string? AddressLine,
+        string? City,
+        string? Province,
+        string? PostalCode,
+        string? Country
+    );
+
+    private sealed record ConceptRow(
+        string Codigo,
+        string Descripcion,
+        string Tipo,
+        decimal Monto,
+        bool EsDescuento
+    );
 }
 
 internal static class MinimalPdfBuilder
@@ -865,8 +1191,8 @@ internal static class MinimalPdfBuilder
     public static byte[] BuildSinglePage(IReadOnlyList<string> lines)
     {
         var safeLines = lines
-            .Select(line => Truncate(line ?? string.Empty, 110))
-            .Take(48)
+            .Select(line => Truncate(line ?? string.Empty, 122))
+            .Take(66)
             .ToArray();
 
         var content = BuildTextStream(safeLines);
@@ -884,7 +1210,7 @@ internal static class MinimalPdfBuilder
             offsets,
             3,
             "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>");
-        WriteObject(stream, offsets, 4, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+        WriteObject(stream, offsets, 4, "<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>");
 
         offsets[5] = stream.Position;
         WriteAscii(stream, $"5 0 obj\n<< /Length {contentBytes.Length} >>\nstream\n");
@@ -914,21 +1240,21 @@ internal static class MinimalPdfBuilder
     {
         var sb = new StringBuilder();
         sb.Append("BT\n");
-        sb.Append("/F1 11 Tf\n");
-        sb.Append("40 800 Td\n");
+        sb.Append("/F1 9 Tf\n");
+        sb.Append("30 815 Td\n");
 
         foreach (var line in lines)
         {
             if (string.IsNullOrWhiteSpace(line))
             {
-                sb.Append("0 -14 Td\n");
+                sb.Append("0 -11 Td\n");
                 continue;
             }
 
             sb.Append('(')
                 .Append(EscapePdfText(line))
                 .Append(") Tj\n");
-            sb.Append("0 -14 Td\n");
+            sb.Append("0 -11 Td\n");
         }
 
         sb.Append("ET");
