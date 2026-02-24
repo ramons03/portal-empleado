@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using SAED_PortalEmpleado.Application.Common.Interfaces;
 using SAED_PortalEmpleado.Infrastructure.Persistence;
 using SAED_PortalEmpleado.Infrastructure.Repositories;
+using SAED_PortalEmpleado.Infrastructure.Services;
 
 namespace SAED_PortalEmpleado.Infrastructure;
 
@@ -31,6 +32,9 @@ public static class DependencyInjection
 
         // Register repositories
         services.AddScoped<IEmployeeRepository, EmployeeRepository>();
+        services.AddSingleton<IReceiptCatalogCache, SqliteReceiptCatalogCache>();
+        services.AddSingleton<IReceiptSourceAws, AwsReceiptSource>();
+        services.AddSingleton<IReceiptPeriodLock, ReceiptPeriodLock>();
 
         return services;
     }

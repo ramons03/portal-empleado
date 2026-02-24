@@ -12,6 +12,7 @@ services:
       Authentication__DevLogin__Enabled: ${Authentication__DevLogin__Enabled:-false}
       DOTNET_USE_POLLING_FILE_WATCHER: "1"
       DOTNET_WATCH_SUPPRESS_LAUNCH_BROWSER: "1"
+      DOTNET_WATCH_RESTART_ON_RUDE_EDIT: "true"
       SecuritySettings__Cookie__Secure: "false"
       ReciboSueldo__DataDirectory: /workspace/recibo-sueldo
     volumes:

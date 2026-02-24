@@ -1,6 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getReciboPdfUrl, getReciboSueldo, logReciboSueldoView, type ReciboItem } from '../services/recibo-sueldo';
+import {
+  getReciboPdfUrl,
+  getReciboSueldo,
+  logReciboSueldoView,
+  type ReciboItem,
+} from '../services/recibo-sueldo';
 import { logger } from '../services/logger';
 import type { FeatureFlags } from '../config/features';
 import './ReciboSueldo.css';
@@ -9,26 +14,23 @@ type ReciboSueldoProps = {
   features: FeatureFlags;
 };
 
+type HumanReceiptStatus = 'Disponible' | 'Firmado' | 'Pendiente de firma';
+
 export default function ReciboSueldo({ features }: ReciboSueldoProps) {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [items, setItems] = useState<ReciboItem[]>([]);
-  const [selectedReciboId, setSelectedReciboId] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
       try {
         await logReciboSueldoView('page');
-        const data = await getReciboSueldo();
-        setItems(data.items);
-        if (data.items.length > 0) {
-          setSelectedReciboId(data.items[0].id);
-        }
+        const response = await getReciboSueldo();
+        setItems(response.items);
       } catch (err) {
         logger.captureError(err, 'ReciboSueldo.load');
-        const msg = err instanceof Error ? err.message : 'No se pudo cargar ReciboSueldo.';
-        setError(msg);
+        setError(toFriendlyLoadMessage(err));
       } finally {
         setLoading(false);
       }
@@ -37,19 +39,27 @@ export default function ReciboSueldo({ features }: ReciboSueldoProps) {
     load();
   }, []);
 
-  const selectedRecibo = items.find((item) => item.id === selectedReciboId) ?? null;
-  const selectedPdfUrl = selectedRecibo
-    ? (selectedRecibo.pdfUrl ?? getReciboPdfUrl(selectedRecibo.id))
-    : null;
+  const sortedItems = useMemo(() => {
+    return [...items].sort((a, b) => {
+      const dateA = new Date(a.fechaEmision).getTime();
+      const dateB = new Date(b.fechaEmision).getTime();
+      return dateB - dateA;
+    });
+  }, [items]);
 
-  const handleSelect = async (recibo: ReciboItem) => {
-    setSelectedReciboId(recibo.id);
-
+  const openReceipt = async (recibo: ReciboItem, action: 'view' | 'download' | 'sign') => {
     try {
       await logReciboSueldoView('open', recibo.id);
     } catch (err) {
-      logger.captureError(err, 'ReciboSueldo.handleSelect');
+      logger.captureError(err, 'ReciboSueldo.openReceipt');
     }
+
+    const basePdfUrl = recibo.pdfUrl ?? getReciboPdfUrl(recibo.id);
+    const targetUrl = action === 'download'
+      ? `${basePdfUrl}${basePdfUrl.includes('?') ? '&' : '?'}download=true`
+      : basePdfUrl;
+
+    window.open(targetUrl, '_blank', 'noopener,noreferrer');
   };
 
   return (
@@ -76,60 +86,148 @@ export default function ReciboSueldo({ features }: ReciboSueldoProps) {
       </nav>
 
       <main className="main-content">
-        <div className="page-card">
-          <h2>📄 ReciboSueldo</h2>
-          {loading && <p className="placeholder-text">Cargando ReciboSueldo...</p>}
-          {error && <p className="placeholder-text">{error}</p>}
-          {!loading && !error && items.length === 0 && (
-            <p className="placeholder-text">No hay elementos de ReciboSueldo para mostrar.</p>
-          )}
-          {!loading && !error && items.length > 0 && (
-            <div className="recibo-sueldo-layout">
-              <div className="recibo-sueldo-list">
-                {items.map((recibo) => (
-                  <button
-                    key={recibo.id}
-                    type="button"
-                    className={`recibo-list-item ${selectedReciboId === recibo.id ? 'is-active' : ''}`}
-                    onClick={() => handleSelect(recibo)}
-                  >
-                    <div className="recibo-info">
-                      <h3>{recibo.periodo}</h3>
-                      <p>Importe: {recibo.moneda} {recibo.importe.toLocaleString('es-AR')}</p>
-                      <p>Estado: {recibo.estado}</p>
-                      <p>Fecha emisión: {new Date(recibo.fechaEmision).toLocaleDateString('es-AR')}</p>
-                    </div>
-                  </button>
-                ))}
-              </div>
+        <section className="receipt-page-card" aria-live="polite">
+          <h2>Mis recibos de sueldo</h2>
 
-              <div className="recibo-viewer">
-                {selectedRecibo && selectedPdfUrl ? (
-                  <>
-                    <div className="recibo-viewer-header">
-                      <h3>{selectedRecibo.periodo}</h3>
+          {loading && (
+            <p className="state-message">Estamos cargando tus recibos. Esto puede tardar unos segundos.</p>
+          )}
+
+          {!loading && error && (
+            <p className="state-message is-error">{error}</p>
+          )}
+
+          {!loading && !error && sortedItems.length === 0 && (
+            <p className="state-message">
+              Todavía no encontramos recibos para mostrar. Cuando estén disponibles, van a aparecer acá.
+            </p>
+          )}
+
+          {!loading && !error && sortedItems.length > 0 && (
+            <div className="receipt-list" role="list">
+              {sortedItems.map((recibo) => {
+                const status = toHumanStatus(recibo.estado);
+                const signable = status === 'Pendiente de firma';
+
+                return (
+                  <article className="receipt-card" role="listitem" key={recibo.id}>
+                    <h3 className="receipt-period">{getPeriodLabel(recibo)}</h3>
+                    <p className="receipt-detail">
+                      <span className="receipt-label">Emitido:</span> {formatDate(recibo.fechaEmision)}
+                    </p>
+                    <p className="receipt-detail">
+                      <span className="receipt-label">Neto a cobrar:</span> {formatMoney(recibo.importe, recibo.moneda)}
+                    </p>
+                    <p className={`receipt-status ${statusToClassName(status)}`}>
+                      Estado: {status}
+                    </p>
+
+                    <div className="receipt-actions">
                       <button
                         type="button"
-                        className="recibo-button"
-                        onClick={() => window.open(selectedPdfUrl, '_blank', 'noopener,noreferrer')}
+                        className="receipt-action primary"
+                        onClick={() => openReceipt(recibo, 'view')}
                       >
-                        Abrir aparte
+                        Ver recibo
                       </button>
+
+                      {signable ? (
+                        <button
+                          type="button"
+                          className="receipt-action accent"
+                          onClick={() => openReceipt(recibo, 'sign')}
+                        >
+                          Firmar
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="receipt-action secondary"
+                          onClick={() => openReceipt(recibo, 'download')}
+                        >
+                          Descargar PDF
+                        </button>
+                      )}
                     </div>
-                    <iframe
-                      className="recibo-pdf-frame"
-                      src={selectedPdfUrl}
-                      title={`Recibo ${selectedRecibo.periodo}`}
-                    />
-                  </>
-                ) : (
-                  <p className="placeholder-text">Seleccioná un recibo para visualizar el PDF.</p>
-                )}
-              </div>
+                  </article>
+                );
+              })}
             </div>
           )}
-        </div>
+        </section>
       </main>
     </div>
   );
+}
+
+function getPeriodLabel(recibo: ReciboItem): string {
+  if (typeof recibo.periodo === 'string' && recibo.periodo.trim().length > 0) {
+    return recibo.periodo;
+  }
+
+  const date = new Date(recibo.fechaEmision);
+  return date.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+}
+
+function formatDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '-';
+  }
+
+  return date.toLocaleDateString('es-AR');
+}
+
+function formatMoney(amount: number, currency: string): string {
+  const safeCurrency = typeof currency === 'string' && currency.trim().length > 0
+    ? currency.toUpperCase()
+    : 'ARS';
+
+  return new Intl.NumberFormat('es-AR', {
+    style: 'currency',
+    currency: safeCurrency,
+    maximumFractionDigits: 2,
+  }).format(amount);
+}
+
+function toHumanStatus(rawStatus: string): HumanReceiptStatus {
+  const status = rawStatus.toLowerCase();
+
+  if (status.includes('firm')) {
+    return 'Firmado';
+  }
+
+  if (status.includes('pend')) {
+    return 'Pendiente de firma';
+  }
+
+  return 'Disponible';
+}
+
+function statusToClassName(status: HumanReceiptStatus): string {
+  if (status === 'Firmado') {
+    return 'is-signed';
+  }
+
+  if (status === 'Pendiente de firma') {
+    return 'is-pending';
+  }
+
+  return 'is-available';
+}
+
+function toFriendlyLoadMessage(err: unknown): string {
+  if (err instanceof Error) {
+    const message = err.message.toLowerCase();
+
+    if (message.includes('unauthorized') || message.includes('401')) {
+      return 'Tu sesión venció. Ingresá nuevamente para ver tus recibos.';
+    }
+
+    if (message.includes('employee')) {
+      return 'No pudimos encontrar tus datos de empleado. Contactá a RR.HH.';
+    }
+  }
+
+  return 'No pudimos cargar tus recibos en este momento. Intentá nuevamente en unos minutos.';
 }

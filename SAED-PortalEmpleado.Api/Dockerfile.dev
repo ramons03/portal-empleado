@@ -20,4 +20,4 @@ ENV DOTNET_WATCH_SUPPRESS_LAUNCH_BROWSER=1
 
 EXPOSE 5011
 
-CMD ["dotnet", "watch", "run", "--project", "SAED-PortalEmpleado.Api/SAED-PortalEmpleado.Api.csproj", "--urls", "http://0.0.0.0:5011"]
+CMD ["dotnet", "watch", "--non-interactive", "run", "--project", "SAED-PortalEmpleado.Api/SAED-PortalEmpleado.Api.csproj", "--urls", "http://0.0.0.0:5011"]
