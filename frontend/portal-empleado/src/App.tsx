@@ -20,7 +20,9 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/" element={<Home features={features} />} />
         <Route path="/recibo-sueldo" element={<ReciboSueldo features={features} />} />
-        <Route path="/gestion" element={<Gestion features={features} />} />
+        {features.gestion
+          ? <Route path="/gestion" element={<Gestion features={features} />} />
+          : <Route path="/gestion" element={<Navigate to="/" replace />} />}
         {features.vacaciones
           ? <Route path="/vacaciones" element={<Vacaciones />} />
           : <Route path="/vacaciones" element={<Navigate to="/" replace />} />}

@@ -1,7 +1,9 @@
 export type FeatureFlags = {
+  gestion: boolean;
   vacaciones: boolean;
 };
 
+const rawGestionFlag = (import.meta.env.VITE_FEATURE_GESTION ?? '').toString();
 const rawVacacionesFlag = (import.meta.env.VITE_FEATURE_VACACIONES ?? '').toString();
 
 function parseBooleanFlag(value: string): boolean {
@@ -14,6 +16,7 @@ function parseBooleanFlag(value: string): boolean {
 }
 
 const defaultFeatures: FeatureFlags = {
+  gestion: parseBooleanFlag(rawGestionFlag),
   vacaciones: parseBooleanFlag(rawVacacionesFlag),
 };
 
@@ -34,6 +37,7 @@ export async function loadFeatures(): Promise<FeatureFlags> {
     }
     const data = await response.json() as Partial<FeatureFlags>;
     cachedFeatures = {
+      gestion: typeof data.gestion === 'boolean' ? data.gestion : defaultFeatures.gestion,
       vacaciones: typeof data.vacaciones === 'boolean' ? data.vacaciones : defaultFeatures.vacaciones,
     };
     return cachedFeatures;

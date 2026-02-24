@@ -19,7 +19,8 @@ public class FeaturesController : ControllerBase
     [ResponseCache(Duration = 60)]
     public IActionResult GetFeatures()
     {
+        var gestion = _configuration.GetValue<bool>("Features:Gestion");
         var vacaciones = _configuration.GetValue<bool>("Features:Vacaciones");
-        return Ok(new { vacaciones });
+        return Ok(new { gestion, vacaciones });
     }
 }
